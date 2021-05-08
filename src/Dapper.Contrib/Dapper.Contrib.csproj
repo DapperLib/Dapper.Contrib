@@ -10,7 +10,7 @@
     <NoWarn>$(NoWarn);CA1050</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Dapper\Dapper.csproj" />
+    <PackageReference Include="Dapper" Version="2.0.78" />
   </ItemGroup>
   <ItemGroup Condition=" '$(TargetFramework)' == 'netstandard2.0' ">
     <PackageReference Include="System.Reflection.Emit" Version="4.7.0" />
