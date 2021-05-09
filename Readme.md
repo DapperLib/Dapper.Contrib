@@ -1,6 +1,6 @@
 Dapper.Contrib - a simple object mapper for .Net
 ========================================
-[![Build status](https://ci.appveyor.com/api/projects/status/8rbgoxqio76ynj4h?svg=true)](https://ci.appveyor.com/project/StackExchange/dapper)
+[![Build status](https://ci.appveyor.com/api/projects/status/1w448i6nfxd14w75?svg=true)](https://ci.appveyor.com/project/StackExchange/dapper-contrib)
 
 Release Notes
 -------------
