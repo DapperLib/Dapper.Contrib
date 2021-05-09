@@ -1,4 +1,4 @@
-# Dapper - a simple object mapper for .Net
+# Dapper.Contrib - Extensions for Dapper
 
 ## Overview
 
