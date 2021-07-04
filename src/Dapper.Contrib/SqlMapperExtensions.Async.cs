@@ -137,7 +137,7 @@ namespace Dapper.Contrib.Extensions
         /// <param name="sqlAdapter">The specific ISqlAdapter to use, auto-detected based on connection if null</param>
         /// <returns>Identity of inserted entity</returns>
         public static Task<int> InsertAsync<T>(this IDbConnection connection, T entityToInsert, IDbTransaction transaction = null,
-            int? commandTimeout = null, ISqlAdapter sqlAdapter = null) where T : class
+            int? commandTimeout = null, ISqlAdapter sqlAdapter = null, IColumnNameFormatter columnNameFormatter = null) where T : class
         {
             var type = typeof(T);
             sqlAdapter ??= GetFormatter(connection);
@@ -172,7 +172,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sqlAdapter.AppendColumnName(sbColumnList, property.Name);
+                sqlAdapter.AppendColumnName(sbColumnList, columnNameFormatter == null ? property.Name : columnNameFormatter.Format(property.Name));
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
