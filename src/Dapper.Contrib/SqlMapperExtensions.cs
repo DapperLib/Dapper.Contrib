@@ -7,6 +7,7 @@ using System.Text;
 using System.Collections.Concurrent;
 using System.Reflection.Emit;
 using System.Threading;
+using Dapper.Contrib.Extensions;
 
 using Dapper;
 
@@ -51,6 +52,8 @@ namespace Dapper.Contrib.Extensions
         /// </summary>
         /// <param name="type">The <see cref="Type"/> to get a table name for.</param>
         public delegate string TableNameMapperDelegate(Type type);
+        public delegate string ColumnNameMapperDelegate(PropertyInfo propertyInfo);
+        public delegate string ColumnNameWithAliasMapperDelegate(PropertyInfo propertyInfo);
 
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> KeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ExplicitKeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
@@ -58,6 +61,7 @@ namespace Dapper.Contrib.Extensions
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ComputedProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableName = new ConcurrentDictionary<RuntimeTypeHandle, string>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableColumnsWithAlias = new ConcurrentDictionary<RuntimeTypeHandle, string>();
 
         private static readonly ISqlAdapter DefaultAdapter = new SqlServerAdapter();
         private static readonly Dictionary<string, ISqlAdapter> AdapterDictionary
@@ -173,10 +177,12 @@ namespace Dapper.Contrib.Extensions
 
             if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
             {
-                var key = GetSingleKey<T>(nameof(Get));
+                var piKey = GetSingleKey<T>(nameof(Get));
+                var key = GetColumnName(piKey);
+                var selectQuery = GetColumnsWithAlias(type);
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.Name} = @id";
+                sql = $"select {selectQuery} from {name} where {key} = @id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
@@ -233,13 +239,14 @@ namespace Dapper.Contrib.Extensions
         {
             var type = typeof(T);
             var cacheType = typeof(List<T>);
+            var selectQuery = GetColumnsWithAlias(type);
 
             if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
             {
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
-                sql = "select * from " + name;
+                sql = $"select {selectQuery} from " + name;
                 GetQueries[cacheType.TypeHandle] = sql;
             }
 
@@ -275,6 +282,8 @@ namespace Dapper.Contrib.Extensions
         /// </summary>
 #pragma warning disable CA2211 // Non-constant fields should not be visible - I agree with you, but we can't do that until we break the API
         public static TableNameMapperDelegate TableNameMapper;
+        public static ColumnNameMapperDelegate ColumnNameMapper;
+        public static ColumnNameWithAliasMapperDelegate ColumnNameWithAliasMapper;
 #pragma warning restore CA2211 // Non-constant fields should not be visible
 
         private static string GetTableName(Type type)
@@ -306,6 +315,63 @@ namespace Dapper.Contrib.Extensions
 
             TypeTableName[type.TypeHandle] = name;
             return name;
+        }
+
+
+        internal static string GetColumnName(PropertyInfo propertyInfo)
+        {
+            var name = propertyInfo.Name;
+            if (ColumnNameMapper != null)
+            {
+                name = ColumnNameMapper(propertyInfo);
+            }
+            else
+            {
+                var columnAttrName =
+                    propertyInfo.GetCustomAttribute<ColumnAttribute>(false)?.Name
+                    ?? (propertyInfo.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "ColumnAttribute") as dynamic)?.Name;
+                name = columnAttrName != null ? columnAttrName : propertyInfo.Name;
+            }
+            return name;
+        }
+
+        internal static string GetColumnNameWithAlias(PropertyInfo propertyInfo)
+        {
+            var name = propertyInfo.Name;
+            if (ColumnNameWithAliasMapper != null)
+            {
+                name = ColumnNameWithAliasMapper(propertyInfo);
+            }
+            else
+            {
+                var columnAttrName =
+                    propertyInfo.GetCustomAttribute<ColumnAttribute>(false)?.Name
+                    ?? (propertyInfo.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "ColumnAttribute") as dynamic)?.Name;
+                name = columnAttrName != null ? $"{columnAttrName} as {propertyInfo.Name}" : propertyInfo.Name;
+            }
+
+            return name;
+        }
+
+        internal static string GetColumnsWithAlias(Type type)
+        {
+            if (TypeTableColumnsWithAlias.TryGetValue(type.TypeHandle, out string query))
+            {
+                return query;
+            }
+
+            var allProperties = TypePropertiesCache(type);
+            var sb = new StringBuilder();
+            for (int i = 0; i < allProperties.Count; i++)
+            {
+                var property = allProperties[i];
+                sb.Append(GetColumnNameWithAlias(property));
+                if (i < allProperties.Count - 1)
+                    sb.Append(", ");
+            }
+            var result = sb.ToString();
+            TypeTableColumnsWithAlias[type.TypeHandle] = result;
+            return result;
         }
 
         /// <summary>
@@ -354,7 +420,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                adapter.AppendColumnName(sbColumnList, property.Name);  //fix for issue #336
+                adapter.AppendColumnName(sbColumnList, GetColumnName(property));  //fix for issue #336
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
@@ -442,7 +508,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);  //fix for issue #336
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -450,7 +516,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -507,7 +573,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -722,6 +788,27 @@ namespace Dapper.Contrib.Extensions
     }
 
     /// <summary>
+    /// Defines the name of a column to use in Dapper.Contrib commands.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Property)]
+    public class ColumnAttribute : Attribute
+    {
+        /// <summary>
+        /// Creates a column mapping to a specific name for Dapper.Contrib commands
+        /// </summary>
+        /// <param name="columnName">The name of the column of the table in the database.</param>
+        public ColumnAttribute(string columnName)
+        {
+            Name = columnName;
+        }
+
+        /// <summary>
+        /// The name of the column of the table in the database
+        /// </summary>
+        public string Name { get; set; }
+    }
+
+    /// <summary>
     /// Specifies that this field is a primary key in the database
     /// </summary>
     [AttributeUsage(AttributeTargets.Property)]
@@ -736,6 +823,8 @@ namespace Dapper.Contrib.Extensions
     public class ExplicitKeyAttribute : Attribute
     {
     }
+
+
 
     /// <summary>
     /// Specifies whether a field is writable in the database.
@@ -799,6 +888,7 @@ public partial interface ISqlAdapter
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
     void AppendColumnNameEqualsValue(StringBuilder sb, string columnName);
+    void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName);
 }
 
 /// <summary>
@@ -854,6 +944,11 @@ public partial class SqlServerAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
+    }
+
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName)
+    {
+        sb.AppendFormat("[{0}] = @{1}", columnName, parameterName);
     }
 }
 
@@ -911,6 +1006,11 @@ public partial class SqlCeServerAdapter : ISqlAdapter
     {
         sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
     }
+
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName)
+    {
+        sb.AppendFormat("[{0}] = @{1}", columnName, parameterName);
+    }
 }
 
 /// <summary>
@@ -966,6 +1066,11 @@ public partial class MySqlAdapter : ISqlAdapter
     {
         sb.AppendFormat("`{0}` = @{1}", columnName, columnName);
     }
+
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName)
+    {
+        sb.AppendFormat("`{0}` = @{1}", columnName, parameterName);
+    }
 }
 
 /// <summary>
@@ -1005,7 +1110,7 @@ public partial class PostgresAdapter : ISqlAdapter
                 if (!first)
                     sb.Append(", ");
                 first = false;
-                sb.Append(property.Name);
+                sb.Append(SqlMapperExtensions.GetColumnName(property));
             }
         }
 
@@ -1015,7 +1120,7 @@ public partial class PostgresAdapter : ISqlAdapter
         var id = 0;
         foreach (var p in propertyInfos)
         {
-            var value = ((IDictionary<string, object>)results[0])[p.Name.ToLower()];
+            var value = ((IDictionary<string, object>)results[0])[SqlMapperExtensions.GetColumnName(p).ToLower()];
             p.SetValue(entityToInsert, value, null);
             if (id == 0)
                 id = Convert.ToInt32(value);
@@ -1041,6 +1146,11 @@ public partial class PostgresAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+    }
+
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName)
+    {
+        sb.AppendFormat("\"{0}\" = @{1}", columnName, parameterName);
     }
 }
 
@@ -1094,6 +1204,11 @@ public partial class SQLiteAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+    }
+
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName)
+    {
+        sb.AppendFormat("\"{0}\" = @{1}", columnName, parameterName);
     }
 }
 
@@ -1151,5 +1266,10 @@ public partial class FbAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("{0} = @{1}", columnName, columnName);
+    }
+
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterName)
+    {
+        sb.AppendFormat("{0} = @{1}", columnName, parameterName);
     }
 }
