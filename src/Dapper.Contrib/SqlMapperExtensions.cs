@@ -1,12 +1,10 @@
-using Dapper;
-using MigrosHukuk.Dapper.Contrib.Extensions;
 using System.Collections.Concurrent;
-using System.Data;
-using System.Reflection;
 using System.Reflection.Emit;
-using System.Text;
+using System.Threading;
+using Dapper.Contrib.Extensions;
+using Dapper;
 
-namespace MigrosHukuk.Dapper.Contrib.Extensions
+namespace Dapper.Contrib.Extensions
 {
     /// <summary>
     /// The Dapper.Contrib extensions for Dapper
