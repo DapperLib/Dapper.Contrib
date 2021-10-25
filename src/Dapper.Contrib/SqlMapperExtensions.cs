@@ -1,17 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Data;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Collections.Concurrent;
-using System.Reflection.Emit;
-using System.Threading;
-using Dapper.Contrib.Extensions;
-
 using Dapper;
+using MigrosHukuk.Dapper.Contrib.Extensions;
+using System.Collections.Concurrent;
+using System.Data;
+using System.Reflection;
+using System.Reflection.Emit;
+using System.Text;
 
-namespace Dapper.Contrib.Extensions
+namespace MigrosHukuk.Dapper.Contrib.Extensions
 {
     /// <summary>
     /// The Dapper.Contrib extensions for Dapper
@@ -353,20 +348,22 @@ namespace Dapper.Contrib.Extensions
             return name;
         }
 
-        internal static string GetColumnsWithAlias(Type type)
+        public static string GetColumnsWithAlias(Type type)
         {
             if (TypeTableColumnsWithAlias.TryGetValue(type.TypeHandle, out string query))
             {
                 return query;
             }
-
             var allProperties = TypePropertiesCache(type);
+            var computedProperties = ComputedPropertiesCache(type);
+            var allPropertiesExceptComputedProperties = allProperties.Except(computedProperties).ToList();
+
             var sb = new StringBuilder();
-            for (int i = 0; i < allProperties.Count; i++)
+            for (int i = 0; i < allPropertiesExceptComputedProperties.Count; i++)
             {
-                var property = allProperties[i];
+                var property = allPropertiesExceptComputedProperties[i];
                 sb.Append(GetColumnNameWithAlias(property));
-                if (i < allProperties.Count - 1)
+                if (i < allPropertiesExceptComputedProperties.Count - 1)
                     sb.Append(", ");
             }
             var result = sb.ToString();
@@ -787,24 +784,14 @@ namespace Dapper.Contrib.Extensions
         public string Name { get; set; }
     }
 
-    /// <summary>
-    /// Defines the name of a column to use in Dapper.Contrib commands.
-    /// </summary>
     [AttributeUsage(AttributeTargets.Property)]
     public class ColumnAttribute : Attribute
     {
-        /// <summary>
-        /// Creates a column mapping to a specific name for Dapper.Contrib commands
-        /// </summary>
-        /// <param name="columnName">The name of the column of the table in the database.</param>
         public ColumnAttribute(string columnName)
         {
             Name = columnName;
         }
 
-        /// <summary>
-        /// The name of the column of the table in the database
-        /// </summary>
         public string Name { get; set; }
     }
 
