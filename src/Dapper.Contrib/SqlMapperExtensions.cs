@@ -354,7 +354,18 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                adapter.AppendColumnName(sbColumnList, property.Name);  //fix for issue #336
+
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+
+                if (columnAttribute == null)
+                {
+                    adapter.AppendColumnName(sbColumnList, property.Name);  //fix for issue #336
+                }
+                else
+                {
+                    adapter.AppendColumnName(sbColumnList, columnAttribute.Name);
+                }
+
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
@@ -717,6 +728,27 @@ namespace Dapper.Contrib.Extensions
 
         /// <summary>
         /// The name of the table in the database
+        /// </summary>
+        public string Name { get; set; }
+    }
+
+    /// <summary>
+    /// Defines the name of a column to use in Dapper.Contrib commands.
+    /// </summary>
+    [AttributeUsage(AttributeTargets.Property)]
+    public class ColumnAttribute : Attribute
+    {
+        /// <summary>
+        /// Creates a table mapping to a specific name for Dapper.Contrib commands
+        /// </summary>
+        /// <param name="columnName">The name of this table in the database.</param>
+        public ColumnAttribute(string columnName)
+        {
+            Name = columnName;
+        }
+
+        /// <summary>
+        /// The name of the column in the database
         /// </summary>
         public string Name { get; set; }
     }
