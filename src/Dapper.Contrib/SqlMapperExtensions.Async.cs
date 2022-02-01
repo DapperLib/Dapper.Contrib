@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Dapper;
+using Dapper.Contrib.Extensions;
 
 namespace Dapper.Contrib.Extensions
 {
@@ -49,7 +50,9 @@ namespace Dapper.Contrib.Extensions
 
             foreach (var property in TypePropertiesCache(type))
             {
-                var val = res[property.Name];
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+                
+                var val = res[columnAttribute == null ? property.Name : columnAttribute.Name];
                 if (val == null) continue;
                 if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                 {
@@ -107,8 +110,10 @@ namespace Dapper.Contrib.Extensions
             {
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
-                {
-                    var val = res[property.Name];
+                {                
+                    var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+                
+                    var val = res[columnAttribute == null ? property.Name : columnAttribute.Name];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -172,7 +177,10 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sqlAdapter.AppendColumnName(sbColumnList, property.Name);
+                
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+
+                sqlAdapter.AppendColumnName(sbColumnList, columnAttribute == null ? property.Name : columnAttribute.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
@@ -181,7 +189,10 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sbParameterList.AppendFormat("@{0}", property.Name);
+                
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+                
+                sbParameterList.AppendFormat("@{0}", columnAttribute == null ? property.Name : columnAttribute.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbParameterList.Append(", ");
             }
@@ -252,7 +263,10 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+
+                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name);
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -260,7 +274,10 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+                
+                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name);
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -317,7 +334,10 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allKeyProperties.Count; i++)
             {
                 var property = allKeyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+                
+                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name);
                 if (i < allKeyProperties.Count - 1)
                     sb.Append(" AND ");
             }
@@ -493,7 +513,10 @@ public partial class PostgresAdapter
                 if (!first)
                     sb.Append(", ");
                 first = false;
-                sb.Append(property.Name);
+                
+                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
+                
+                sb.Append(columnAttribute == null ? property.Name : columnAttribute.Name);
             }
         }
 
