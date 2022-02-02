@@ -190,9 +190,7 @@ namespace Dapper.Contrib.Extensions
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
                 
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                
-                sbParameterList.AppendFormat("@{0}", columnAttribute == null ? property.Name : columnAttribute.Name);
+                sbParameterList.AppendFormat("@{0}", property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbParameterList.Append(", ");
             }
@@ -266,7 +264,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name);
+                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -277,7 +275,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
                 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name);
+                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -337,7 +335,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
                 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name);
+                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
                 if (i < allKeyProperties.Count - 1)
                     sb.Append(" AND ");
             }
