@@ -51,9 +51,7 @@ namespace Dapper.Contrib.Extensions
 
             foreach (var property in TypePropertiesCache(type))
             {
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                
-                var val = res[columnAttribute == null ? property.Name : columnAttribute.Name];
+                var val = res[property.Name];
                 if (val == null) continue;
                 if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                 {
@@ -112,9 +110,7 @@ namespace Dapper.Contrib.Extensions
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
                 {                
-                    var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                
-                    var val = res[columnAttribute == null ? property.Name : columnAttribute.Name];
+                    var val = res[property.Name];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -181,7 +177,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
 
-                sqlAdapter.AppendColumnName(sbColumnList, columnAttribute == null ? property.Name : columnAttribute.Name);
+                sqlAdapter.AppendColumnName(sbColumnList, GetColumnName(property));
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
@@ -265,7 +261,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -276,7 +272,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
                 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -336,7 +332,7 @@ namespace Dapper.Contrib.Extensions
                 
                 var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
                 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);
                 if (i < allKeyProperties.Count - 1)
                     sb.Append(" AND ");
             }
@@ -513,9 +509,7 @@ public partial class PostgresAdapter
                     sb.Append(", ");
                 first = false;
                 
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                
-                sb.Append(columnAttribute == null ? property.Name : columnAttribute.Name);
+                sb.Append(GetColumnName(property));
             }
         }
 
@@ -532,6 +526,7 @@ public partial class PostgresAdapter
         }
         return id;
     }
+    private static string GetColumnName(PropertyInfo property) => property.GetCustomAttribute<ColumnAttribute>() == null ? property.Name : property.GetCustomAttribute<ColumnAttribute>().Name;
 }
 
 public partial class SQLiteAdapter

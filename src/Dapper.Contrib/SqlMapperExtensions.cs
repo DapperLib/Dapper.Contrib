@@ -175,10 +175,9 @@ namespace Dapper.Contrib.Extensions
             if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(Get));
-                var columnAttribute = key.GetCustomAttribute<ColumnAttribute>();
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {(columnAttribute == null ? key.Name : columnAttribute.Name)} = @id";
+                sql = $"select * from {name} where {GetColumnName(key)} = @id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
@@ -199,9 +198,8 @@ namespace Dapper.Contrib.Extensions
                 foreach (var property in TypePropertiesCache(type))
                 {
                     
-                    var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
 
-                    var val = res[columnAttribute == null ? property.Name : columnAttribute.Name];
+                    var val = res[property.Name];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -257,9 +255,7 @@ namespace Dapper.Contrib.Extensions
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                    
-                    var val = res[columnAttribute == null ? property.Name : columnAttribute.Name];
+                    var val = res[property.Name];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -362,9 +358,7 @@ namespace Dapper.Contrib.Extensions
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
 
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-
-                adapter.AppendColumnName(sbColumnList, columnAttribute == null ? property.Name : columnAttribute.Name);
+                adapter.AppendColumnName(sbColumnList, GetColumnName(property));
 
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
@@ -398,7 +392,7 @@ namespace Dapper.Contrib.Extensions
             if (wasClosed) connection.Close();
             return returnVal;
         }
-
+        
         /// <summary>
         /// Updates entity in table "Ts", checks if the entity is modified if the entity is tracked by the Get() extension.
         /// </summary>
@@ -454,9 +448,8 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -465,9 +458,7 @@ namespace Dapper.Contrib.Extensions
             {
                 var property = keyProperties[i];
                 
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -525,9 +516,8 @@ namespace Dapper.Contrib.Extensions
             {
                 var property = keyProperties[i];
                 
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
                 
-                adapter.AppendColumnNameEqualsValue(sb, columnAttribute == null ? property.Name : columnAttribute.Name, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, GetColumnName(property), property.Name);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -609,9 +599,7 @@ namespace Dapper.Contrib.Extensions
                 {
                     var isId = property.GetCustomAttributes(true).Any(a => a is KeyAttribute);
                     
-                    var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                    
-                    CreateProperty<T>(typeBuilder, columnAttribute == null ? property.Name : columnAttribute.Name, property.PropertyType, setIsDirtyMethod, isId);
+                    CreateProperty<T>(typeBuilder, GetColumnName(property), property.PropertyType, setIsDirtyMethod, isId);
                 }
 
 #if NETSTANDARD2_0
@@ -721,6 +709,11 @@ namespace Dapper.Contrib.Extensions
                 typeBuilder.DefineMethodOverride(currSetPropMthdBldr, setMethod);
             }
         }
+    
+        /// <summary>
+        /// Returns the Column name using the column attribute
+        /// </summary>
+        private static string GetColumnName(PropertyInfo property) => property.GetCustomAttribute<ColumnAttribute>() == null ? property.Name : property.GetCustomAttribute<ColumnAttribute>().Name;
     }
 
     /// <summary>
@@ -1054,9 +1047,7 @@ public partial class PostgresAdapter : ISqlAdapter
                     sb.Append(", ");
                 first = false;
                 
-                var columnAttribute = property.GetCustomAttribute<ColumnAttribute>();
-                
-                sb.Append(columnAttribute == null ? property.Name : columnAttribute.Name);
+                sb.Append(GetColumnName(property));
             }
         }
 
