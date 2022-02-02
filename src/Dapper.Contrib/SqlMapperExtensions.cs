@@ -175,9 +175,10 @@ namespace Dapper.Contrib.Extensions
             if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(Get));
+                var columnAttribute = key.GetCustomAttribute<ColumnAttribute>();
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.Name} = @id";
+                sql = $"select * from {name} where {(columnAttribute == null ? key.Name : columnAttribute.Name)} = @id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
