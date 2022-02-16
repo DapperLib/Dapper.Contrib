@@ -204,7 +204,34 @@ namespace Dapper.Tests.Contrib
                 Assert.True(await connection.InsertAsync(new User { Name = "Adam", Age = 10 }).ConfigureAwait(false) > originalCount + 1);
             }
         }
-
+        [Fact]
+        public async Task DynamicParametersUpdateAsync()
+        {
+            using (var connection = GetOpenConnection())
+            {
+                Assert.Null(await connection.GetAsync<User>(30).ConfigureAwait(false));
+                
+                var id = await connection.InsertAsync(new User { Name = "Adam", Age = 10 }).ConfigureAwait(false);
+                
+                var user = await connection.GetAsync<IUser>(id).ConfigureAwait(false);
+                
+                var parameters1 = new { id=user.Id,name="Bob"};
+                Assert.True(await connection.DynamicParametersUpdateAsync<IUser>(parameters1).ConfigureAwait(false));
+                Assert.Equal("Bob", (await connection.GetAsync<User>(id).ConfigureAwait(false)).Name);
+                Assert.Equal(10, (await connection.GetAsync<User>(id).ConfigureAwait(false)).Age);
+                
+                var parameters2 = new { id=user.Id,age=20};
+                
+                Assert.True(await connection.DynamicParametersUpdateAsync<IUser>(parameters2).ConfigureAwait(false));
+                Assert.Equal("Bob", (await connection.GetAsync<User>(id).ConfigureAwait(false)).Name);
+                Assert.Equal(20, (await connection.GetAsync<User>(id).ConfigureAwait(false)).Age);
+                
+                var parameters3 = new { id=-1,age=20};
+                
+                Assert.False(await connection.DynamicParametersUpdateAsync<IUser>(parameters3).ConfigureAwait(false));
+                
+            }
+        }
         [Fact]
         public async Task InsertCheckKeyAsync()
         {
