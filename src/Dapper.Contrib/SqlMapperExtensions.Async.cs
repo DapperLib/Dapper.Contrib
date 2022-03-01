@@ -25,13 +25,34 @@ namespace Dapper.Contrib.Extensions
         public static async Task<T> GetAsync<T>(this IDbConnection connection, dynamic id, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             var type = typeof(T);
-            if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
+            var properties = TypePropertiesCache(type);
+            var adapter = GetFormatter(connection);
+            
+            var getQueriesKey = new GetQueriesCacheKey(type.TypeHandle, adapter.GetType().TypeHandle);
+            
+            if (!GetQueries.TryGetValue(getQueriesKey, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(GetAsync));
-                var name = GetTableName(type);
+                var name = type.TableName();
 
-                sql = $"SELECT * FROM {name} WHERE {key.Name} = @id";
-                GetQueries[type.TypeHandle] = sql;
+                StringBuilder sqlStringBuilder = new StringBuilder("select ");
+                
+                foreach (PropertyInfo property in properties)
+                {
+                    adapter.AppendColumnName(sqlStringBuilder, property.ColumnName());
+                    sqlStringBuilder.Append(" as ");
+                    adapter.AppendColumnName(sqlStringBuilder, property.Name);
+                    sqlStringBuilder.AppendLine(",");
+                }
+
+                sqlStringBuilder.Remove(sqlStringBuilder.Length - 3, 2);
+                
+                sqlStringBuilder.Append($" from {name} where ");
+                adapter.AppendColumnNameEqualsValue(sqlStringBuilder, key.ColumnName(), "id");
+
+                sql = sqlStringBuilder.ToString();
+                
+                GetQueries[getQueriesKey] = sql;
             }
 
             var dynParams = new DynamicParameters();
@@ -47,7 +68,7 @@ namespace Dapper.Contrib.Extensions
 
             var obj = ProxyGenerator.GetInterfaceProxy<T>();
 
-            foreach (var property in TypePropertiesCache(type))
+            foreach (var property in properties)
             {
                 var val = res[property.Name];
                 if (val == null) continue;
@@ -82,14 +103,32 @@ namespace Dapper.Contrib.Extensions
         {
             var type = typeof(T);
             var cacheType = typeof(List<T>);
+            var properties = TypePropertiesCache(type);
+            var adapter = GetFormatter(connection);
 
-            if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
+            var getQueriesKey = new GetQueriesCacheKey(cacheType.TypeHandle, adapter.GetType().TypeHandle);
+
+            if (!GetQueries.TryGetValue(getQueriesKey, out string sql))
             {
                 GetSingleKey<T>(nameof(GetAll));
-                var name = GetTableName(type);
+                var name = type.TableName();
 
-                sql = "SELECT * FROM " + name;
-                GetQueries[cacheType.TypeHandle] = sql;
+                StringBuilder sqlStringBuilder = new StringBuilder("select ");
+                
+                foreach (PropertyInfo property in properties)
+                {
+                    adapter.AppendColumnName(sqlStringBuilder, property.ColumnName());
+                    sqlStringBuilder.Append(" as ");
+                    adapter.AppendColumnName(sqlStringBuilder, property.Name);
+                    sqlStringBuilder.AppendLine(",");
+                }
+
+                sqlStringBuilder.Remove(sqlStringBuilder.Length - 3, 2);
+                
+                sqlStringBuilder.Append($" from {name} ");
+
+                sql = sqlStringBuilder.ToString();
+                GetQueries[getQueriesKey] = sql;
             }
 
             if (!type.IsInterface)
@@ -108,7 +147,7 @@ namespace Dapper.Contrib.Extensions
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var val = res[property.Name];
+                    var val = res[property.ColumnName()];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -162,7 +201,7 @@ namespace Dapper.Contrib.Extensions
                 }
             }
 
-            var name = GetTableName(type);
+            var name = type.TableName();
             var sbColumnList = new StringBuilder(null);
             var allProperties = TypePropertiesCache(type);
             var keyProperties = KeyPropertiesCache(type).ToList();
@@ -172,7 +211,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sqlAdapter.AppendColumnName(sbColumnList, property.Name);
+                sqlAdapter.AppendColumnName(sbColumnList, property.ColumnName());
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
@@ -237,7 +276,7 @@ namespace Dapper.Contrib.Extensions
             if (keyProperties.Count == 0 && explicitKeyProperties.Count == 0)
                 throw new ArgumentException("Entity must have at least one [Key] or [ExplicitKey] property");
 
-            var name = GetTableName(type);
+            var name = type.TableName();
 
             var sb = new StringBuilder();
             sb.AppendFormat("update {0} set ", name);
@@ -252,7 +291,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, property.ColumnName(), property.Name);
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -260,7 +299,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, property.ColumnName(), property.Name);
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -306,7 +345,7 @@ namespace Dapper.Contrib.Extensions
             if (keyProperties.Count == 0 && explicitKeyProperties.Count == 0)
                 throw new ArgumentException("Entity must have at least one [Key] or [ExplicitKey] property");
 
-            var name = GetTableName(type);
+            var name = type.TableName();
             var allKeyProperties = keyProperties.Concat(explicitKeyProperties).ToList();
 
             var sb = new StringBuilder();
@@ -317,7 +356,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allKeyProperties.Count; i++)
             {
                 var property = allKeyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, property.ColumnName(), property.Name);
                 if (i < allKeyProperties.Count - 1)
                     sb.Append(" AND ");
             }
@@ -336,7 +375,7 @@ namespace Dapper.Contrib.Extensions
         public static async Task<bool> DeleteAllAsync<T>(this IDbConnection connection, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             var type = typeof(T);
-            var statement = "DELETE FROM " + GetTableName(type);
+            var statement = "DELETE FROM " + type.TableName();
             var deleted = await connection.ExecuteAsync(statement, null, transaction, commandTimeout).ConfigureAwait(false);
             return deleted > 0;
         }
