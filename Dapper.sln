@@ -16,7 +16,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		version.json = version.json
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Dapper.Contrib", "Dapper.Contrib\Dapper.Contrib.csproj", "{4E409F8F-CFBB-4332-8B0A-FD5A283051FD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Dapper.Contrib", "src\Dapper.Contrib\Dapper.Contrib.csproj", "{4E409F8F-CFBB-4332-8B0A-FD5A283051FD}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Dapper.Tests.Contrib", "tests\Dapper.Tests.Contrib\Dapper.Tests.Contrib.csproj", "{DAB3C5B7-BCD1-4A5F-BB6B-50D2BB63DB4A}"
 EndProject
