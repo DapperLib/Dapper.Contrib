@@ -711,13 +711,12 @@ namespace Dapper.Contrib.Extensions
         {
             var columnList = new List<string>();
             var allProperties = TypePropertiesCache(type);
-            var keyProperties = KeyPropertiesCache(type).ToList();
             var computedProperties = ComputedPropertiesCache(type);
-            var allPropertiesExceptKeyAndComputed = allProperties.Except(keyProperties.Union(computedProperties)).ToList();
+            var allPropertiesExceptComputed = allProperties.Except(computedProperties).ToList();
 
-            for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
+            for (var i = 0; i < allPropertiesExceptComputed.Count; i++)
             {
-                var property = allPropertiesExceptKeyAndComputed[i];
+                var property = allPropertiesExceptComputed[i];
                 var columnName = property.GetColumnName();
                 var propName = property.Name;
                 columnList.Add($"[{columnName}] as '{propName}'");

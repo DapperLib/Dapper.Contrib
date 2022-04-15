@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Data;
 using System.Linq;
 using Dapper.Contrib.Extensions;
@@ -9,7 +10,7 @@ using FactAttribute = Dapper.Tests.Contrib.SkippableFactAttribute;
 
 namespace Dapper.Tests.Contrib
 {
-    [Table("ObjectX")]
+    [Dapper.Contrib.Extensions.Table("ObjectX")]
     public class ObjectX
     {
         [ExplicitKey]
@@ -17,7 +18,7 @@ namespace Dapper.Tests.Contrib
         public string Name { get; set; }
     }
 
-    [Table("ObjectY")]
+    [Dapper.Contrib.Extensions.Table("ObjectY")]
     public class ObjectY
     {
         [ExplicitKey]
@@ -25,7 +26,7 @@ namespace Dapper.Tests.Contrib
         public string Name { get; set; }
     }
 
-    [Table("ObjectZ")]
+    [Dapper.Contrib.Extensions.Table("ObjectZ")]
     public class ObjectZ
     {
         [ExplicitKey]
@@ -67,7 +68,7 @@ namespace Dapper.Tests.Contrib
         public string Name { get; set; }
     }
 
-    [Table("Stuff")]
+    [Dapper.Contrib.Extensions.Table("Stuff")]
     public class Stuff
     {
         [Key]
@@ -76,7 +77,7 @@ namespace Dapper.Tests.Contrib
         public DateTime? Created { get; set; }
     }
 
-    [Table("Automobiles")]
+    [Dapper.Contrib.Extensions.Table("Automobiles")]
     public class Car
     {
         public int Id { get; set; }
@@ -85,7 +86,7 @@ namespace Dapper.Tests.Contrib
         public string Computed { get; set; }
     }
 
-    [Table("Results")]
+    [Dapper.Contrib.Extensions.Table("Results")]
     public class Result
     {
         public int Id { get; set; }
@@ -93,7 +94,7 @@ namespace Dapper.Tests.Contrib
         public int Order { get; set; }
     }
 
-    [Table("GenericType")]
+    [Dapper.Contrib.Extensions.Table("GenericType")]
     public class GenericType<T>
     {
         [ExplicitKey]
