@@ -5,10 +5,12 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Collections.Concurrent;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection.Emit;
 using System.Threading;
 
 using Dapper;
+using Dapper.Contrib.Extensions;
 
 namespace Dapper.Contrib.Extensions
 {
@@ -109,7 +111,7 @@ namespace Dapper.Contrib.Extensions
 
             if (keyProperties.Count == 0)
             {
-                var idProp = allProperties.Find(p => string.Equals(p.Name, "id", StringComparison.CurrentCultureIgnoreCase));
+                var idProp = allProperties.Find(p => string.Equals(p.GetColumnName(), "id", StringComparison.CurrentCultureIgnoreCase));
                 if (idProp != null && !idProp.GetCustomAttributes(true).Any(a => a is ExplicitKeyAttribute))
                 {
                     keyProperties.Add(idProp);
@@ -139,6 +141,12 @@ namespace Dapper.Contrib.Extensions
 
             var writeAttribute = (WriteAttribute)attributes[0];
             return writeAttribute.Write;
+        }
+
+        internal static string GetColumnName(this PropertyInfo prop)
+        {
+            var columnAttribute = prop.GetCustomAttribute<ColumnAttribute>() as ColumnAttribute;
+            return columnAttribute?.Name ?? prop.Name;
         }
 
         private static PropertyInfo GetSingleKey<T>(string method)
@@ -176,7 +184,7 @@ namespace Dapper.Contrib.Extensions
                 var key = GetSingleKey<T>(nameof(Get));
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.Name} = @id";
+                sql = $"select * from {name} where {key.GetColumnName()} = @id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
@@ -196,7 +204,7 @@ namespace Dapper.Contrib.Extensions
 
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var val = res[property.Name];
+                    var val = res[property.GetColumnName()];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -252,7 +260,7 @@ namespace Dapper.Contrib.Extensions
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var val = res[property.Name];
+                    var val = res[property.GetColumnName()];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -290,7 +298,7 @@ namespace Dapper.Contrib.Extensions
                 //NOTE: This as dynamic trick falls back to handle both our own Table-attribute as well as the one in EntityFramework 
                 var tableAttrName =
                     type.GetCustomAttribute<TableAttribute>(false)?.Name
-                    ?? (type.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic)?.Name;
+                    ?? (type.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic)?.GetColumnName();
 
                 if (tableAttrName != null)
                 {
@@ -354,7 +362,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                adapter.AppendColumnName(sbColumnList, property.Name);  //fix for issue #336
+                adapter.AppendColumnName(sbColumnList, property.GetColumnName());  //fix for issue #336
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
@@ -442,7 +450,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, property);  //fix for issue #336
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -450,7 +458,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, property);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -507,7 +515,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, property);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -588,7 +596,7 @@ namespace Dapper.Contrib.Extensions
                 foreach (var property in typeof(T).GetProperties())
                 {
                     var isId = property.GetCustomAttributes(true).Any(a => a is KeyAttribute);
-                    CreateProperty<T>(typeBuilder, property.Name, property.PropertyType, setIsDirtyMethod, isId);
+                    CreateProperty<T>(typeBuilder, property.GetColumnName(), property.PropertyType, setIsDirtyMethod, isId);
                 }
 
 #if NETSTANDARD2_0
@@ -799,6 +807,12 @@ public partial interface ISqlAdapter
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
     void AppendColumnNameEqualsValue(StringBuilder sb, string columnName);
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo</param>
+    void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop);
 }
 
 /// <summary>
@@ -854,6 +868,18 @@ public partial class SqlServerAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
+    }
+
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop)
+    {
+        var columnName = prop.GetColumnName();
+        var propName = prop.Name;
+        sb.AppendFormat("[{0}] = @{1}", columnName, propName);
     }
 }
 
@@ -911,6 +937,18 @@ public partial class SqlCeServerAdapter : ISqlAdapter
     {
         sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
     }
+
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop)
+    {
+        var columnName = prop.GetColumnName();
+        var propName = prop.Name;
+        sb.AppendFormat("[{0}] = @{1}", columnName, propName);
+    }
 }
 
 /// <summary>
@@ -966,6 +1004,17 @@ public partial class MySqlAdapter : ISqlAdapter
     {
         sb.AppendFormat("`{0}` = @{1}", columnName, columnName);
     }
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop)
+    {
+        var columnName = prop.GetColumnName();
+        var propName = prop.Name;
+        sb.AppendFormat("`{0}` = @{1}", columnName, propName);
+    }
 }
 
 /// <summary>
@@ -1005,7 +1054,7 @@ public partial class PostgresAdapter : ISqlAdapter
                 if (!first)
                     sb.Append(", ");
                 first = false;
-                sb.Append(property.Name);
+                sb.Append(property.GetColumnName());
             }
         }
 
@@ -1015,7 +1064,7 @@ public partial class PostgresAdapter : ISqlAdapter
         var id = 0;
         foreach (var p in propertyInfos)
         {
-            var value = ((IDictionary<string, object>)results[0])[p.Name.ToLower()];
+            var value = ((IDictionary<string, object>)results[0])[p.GetColumnName().ToLower()];
             p.SetValue(entityToInsert, value, null);
             if (id == 0)
                 id = Convert.ToInt32(value);
@@ -1041,6 +1090,17 @@ public partial class PostgresAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+    }
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop)
+    {
+        var columnName = prop.GetColumnName();
+        var propName = prop.Name;
+        sb.AppendFormat("\"{0}\" = @{1}", columnName, propName);
     }
 }
 
@@ -1095,6 +1155,17 @@ public partial class SQLiteAdapter : ISqlAdapter
     {
         sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
     }
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop)
+    {
+        var columnName = prop.GetColumnName();
+        var propName = prop.Name;
+        sb.AppendFormat("\"{0}\" = @{1}", columnName, propName);
+    }
 }
 
 /// <summary>
@@ -1120,7 +1191,7 @@ public partial class FbAdapter : ISqlAdapter
         connection.Execute(cmd, entityToInsert, transaction, commandTimeout);
 
         var propertyInfos = keyProperties as PropertyInfo[] ?? keyProperties.ToArray();
-        var keyName = propertyInfos[0].Name;
+        var keyName = propertyInfos[0].GetColumnName();
         var r = connection.Query($"SELECT FIRST 1 {keyName} ID FROM {tableName} ORDER BY {keyName} DESC", transaction: transaction, commandTimeout: commandTimeout);
 
         var id = r.First().ID;
@@ -1151,5 +1222,16 @@ public partial class FbAdapter : ISqlAdapter
     public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
     {
         sb.AppendFormat("{0} = @{1}", columnName, columnName);
+    }
+    /// <summary>
+    /// Adds a column equality to a parameter.
+    /// </summary>
+    /// <param name="sb">The string builder  to append to.</param>
+    /// <param name="prop">PropertyInfo.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, PropertyInfo prop)
+    {
+        var columnName = prop.GetColumnName();
+        var propName = prop.Name;
+        sb.AppendFormat("{0} = @{1}", columnName, propName);
     }
 }
