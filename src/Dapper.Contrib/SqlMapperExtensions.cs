@@ -184,7 +184,7 @@ namespace Dapper.Contrib.Extensions
                 var key = GetSingleKey<T>(nameof(Get));
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.GetColumnName()} = @id";
+                sql = $"select {GenerateColumnList(type)} from {name} where {key.GetColumnName()} = @id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
@@ -247,7 +247,7 @@ namespace Dapper.Contrib.Extensions
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
-                sql = "select * from " + name;
+                sql = $"select {GenerateColumnList(type)} from {name}";
                 GetQueries[cacheType.TypeHandle] = sql;
             }
 
@@ -593,7 +593,7 @@ namespace Dapper.Contrib.Extensions
                 var setIsDirtyMethod = CreateIsDirtyProperty(typeBuilder);
 
                 // Generate a field for each property, which implements the T
-                foreach (var property in typeof(T).GetProperties())
+                foreach (var property in typeOfT.GetProperties())
                 {
                     var isId = property.GetCustomAttributes(true).Any(a => a is KeyAttribute);
                     CreateProperty<T>(typeBuilder, property.GetColumnName(), property.PropertyType, setIsDirtyMethod, isId);
@@ -705,6 +705,25 @@ namespace Dapper.Contrib.Extensions
                 typeBuilder.DefineMethodOverride(currGetPropMthdBldr, getMethod);
                 typeBuilder.DefineMethodOverride(currSetPropMthdBldr, setMethod);
             }
+        }
+
+        private static string GenerateColumnList(Type type)
+        {
+            var columnList = new List<string>();
+            var allProperties = TypePropertiesCache(type);
+            var keyProperties = KeyPropertiesCache(type).ToList();
+            var computedProperties = ComputedPropertiesCache(type);
+            var allPropertiesExceptKeyAndComputed = allProperties.Except(keyProperties.Union(computedProperties)).ToList();
+
+            for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
+            {
+                var property = allPropertiesExceptKeyAndComputed[i];
+                var columnName = property.GetColumnName();
+                var propName = property.Name;
+                columnList.Add($"[{columnName}] as '{propName}'");
+            }
+
+            return string.Join(",", columnList);
         }
     }
 

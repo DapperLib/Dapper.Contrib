@@ -31,7 +31,7 @@ namespace Dapper.Contrib.Extensions
                 var key = GetSingleKey<T>(nameof(GetAsync));
                 var name = GetTableName(type);
 
-                sql = $"SELECT * FROM {name} WHERE {key.GetColumnName()} = @id";
+                sql = $"SELECT {GenerateColumnList(type)} FROM {name} WHERE {key.GetColumnName()} = @id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
@@ -89,7 +89,7 @@ namespace Dapper.Contrib.Extensions
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
-                sql = "SELECT * FROM " + name;
+                sql = $"SELECT {GenerateColumnList(type)}  FROM [{name}]";
                 GetQueries[cacheType.TypeHandle] = sql;
             }
 
