@@ -1185,22 +1185,17 @@ public partial class OleDbAdapter : ISqlAdapter
 
         // If no primary key then safe to assume a join table with not too much data to return
         var propertyInfos = keyProperties as PropertyInfo[] ?? keyProperties.ToArray();
-        if (propertyInfos.Length == 0)
+
+        sb.Append(" select @@identity ");
+        var first = true;
+        foreach (var property in propertyInfos)
         {
-            sb.Append(" RETURNING *");
+            if (!first)
+                sb.Append(", ");
+            first = false;
+            sb.Append(property.Name);
         }
-        else
-        {
-            sb.Append(" RETURNING ");
-            var first = true;
-            foreach (var property in propertyInfos)
-            {
-                if (!first)
-                    sb.Append(", ");
-                first = false;
-                sb.Append(property.Name);
-            }
-        }
+
 
         var results = connection.Query(sb.ToString(), entityToInsert, transaction, commandTimeout: commandTimeout).ToList();
 
@@ -1208,8 +1203,8 @@ public partial class OleDbAdapter : ISqlAdapter
         var id = 0;
         foreach (var p in propertyInfos)
         {
-            var value = ((IDictionary<string, object>)results[0])[p.Name.ToLower()];
-            p.SetValue(entityToInsert, value, null);
+            var value = ((IDictionary<string, object>)results[0])[p.Name];
+            p.SetValue(entityToInsert, Convert.ChangeType(value, p.PropertyType), null);
             if (id == 0)
                 id = Convert.ToInt32(value);
         }
