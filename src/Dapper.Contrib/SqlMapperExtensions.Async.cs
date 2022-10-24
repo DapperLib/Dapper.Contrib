@@ -21,21 +21,25 @@ namespace Dapper.Contrib.Extensions
         /// <param name="id">Id of the entity to get, must be marked with [Key] attribute</param>
         /// <param name="transaction">The transaction to run under, null (the default) if none</param>
         /// <param name="commandTimeout">Number of seconds before command execution timeout</param>
+        /// <param name="prependTag">Prepend paramaters with this tag</param>
+        /// <param name="appendTag">Append paramaters with this tag</param>
         /// <returns>Entity of T</returns>
-        public static async Task<T> GetAsync<T>(this IDbConnection connection, dynamic id, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
+        public static async Task<T> GetAsync<T>(this IDbConnection connection, dynamic id, IDbTransaction transaction = null, int? commandTimeout = null, string prependTag = "@", string appendTag = "") where T : class
         {
             var type = typeof(T);
+            var idParameter = string.Format("{0}id{1}", prependTag, appendTag);
+
             if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(GetAsync));
                 var name = GetTableName(type);
 
-                sql = $"SELECT * FROM {name} WHERE {key.Name} = @id";
+                sql = $"SELECT * FROM {name} WHERE {key.Name} = {idParameter}";
                 GetQueries[type.TypeHandle] = sql;
             }
 
             var dynParams = new DynamicParameters();
-            dynParams.Add("@id", id);
+            dynParams.Add(idParameter, id);
 
             if (!type.IsInterface)
                 return (await connection.QueryAsync<T>(sql, dynParams, transaction, commandTimeout).ConfigureAwait(false)).FirstOrDefault();
@@ -135,9 +139,11 @@ namespace Dapper.Contrib.Extensions
         /// <param name="transaction">The transaction to run under, null (the default) if none</param>
         /// <param name="commandTimeout">Number of seconds before command execution timeout</param>
         /// <param name="sqlAdapter">The specific ISqlAdapter to use, auto-detected based on connection if null</param>
+        /// <param name="prependTag">Prepend paramaters with this tag</param>
+        /// <param name="appendTag">Append paramaters with this tag</param>
         /// <returns>Identity of inserted entity</returns>
         public static Task<int> InsertAsync<T>(this IDbConnection connection, T entityToInsert, IDbTransaction transaction = null,
-            int? commandTimeout = null, ISqlAdapter sqlAdapter = null) where T : class
+            int? commandTimeout = null, ISqlAdapter sqlAdapter = null, string prependTag = "@", string appendTag = "") where T : class
         {
             var type = typeof(T);
             sqlAdapter ??= GetFormatter(connection);
@@ -181,7 +187,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sbParameterList.AppendFormat("@{0}", property.Name);
+                sbParameterList.AppendFormat("{0}{1}{2}", prependTag, property.Name, appendTag);
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbParameterList.Append(", ");
             }
@@ -573,5 +579,58 @@ public partial class FbAdapter
         idp.SetValue(entityToInsert, Convert.ChangeType(id, idp.PropertyType), null);
 
         return Convert.ToInt32(id);
+    }
+}
+
+public partial class OleDbAdapter
+{
+    /// <summary>
+    /// Inserts <paramref name="entityToInsert"/> into the database, returning the Id of the row created.
+    /// </summary>
+    /// <param name="connection">The connection to use.</param>
+    /// <param name="transaction">The transaction to use.</param>
+    /// <param name="commandTimeout">The command timeout to use.</param>
+    /// <param name="tableName">The table to insert into.</param>
+    /// <param name="columnList">The columns to set with this insert.</param>
+    /// <param name="parameterList">The parameters to set for this insert.</param>
+    /// <param name="keyProperties">The key columns in this table.</param>
+    /// <param name="entityToInsert">The entity to insert.</param>
+    /// <returns>The Id of the row created.</returns>
+    public async Task<int> InsertAsync(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, string tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert)
+    {
+        var sb = new StringBuilder();
+        sb.AppendFormat("INSERT INTO {0} ({1}) VALUES ({2})", tableName, columnList, parameterList);
+
+        // If no primary key then safe to assume a join table with not too much data to return
+        var propertyInfos = keyProperties as PropertyInfo[] ?? keyProperties.ToArray();
+        if (propertyInfos.Length == 0)
+        {
+            sb.Append(" RETURNING *");
+        }
+        else
+        {
+            sb.Append(" RETURNING ");
+            bool first = true;
+            foreach (var property in propertyInfos)
+            {
+                if (!first)
+                    sb.Append(", ");
+                first = false;
+                sb.Append(property.Name);
+            }
+        }
+
+        var results = await connection.QueryAsync(sb.ToString(), entityToInsert, transaction, commandTimeout).ConfigureAwait(false);
+
+        // Return the key by assigning the corresponding property in the object - by product is that it supports compound primary keys
+        var id = 0;
+        foreach (var p in propertyInfos)
+        {
+            var value = ((IDictionary<string, object>)results.First())[p.Name.ToLower()];
+            p.SetValue(entityToInsert, value, null);
+            if (id == 0)
+                id = Convert.ToInt32(value);
+        }
+        return id;
     }
 }
