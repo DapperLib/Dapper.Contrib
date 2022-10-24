@@ -62,14 +62,15 @@ namespace Dapper.Contrib.Extensions
 
         private static readonly ISqlAdapter DefaultAdapter = new SqlServerAdapter();
         private static readonly Dictionary<string, ISqlAdapter> AdapterDictionary
-            = new Dictionary<string, ISqlAdapter>(6)
+            = new Dictionary<string, ISqlAdapter>(7)
             {
                 ["sqlconnection"] = new SqlServerAdapter(),
                 ["sqlceconnection"] = new SqlCeServerAdapter(),
                 ["npgsqlconnection"] = new PostgresAdapter(),
                 ["sqliteconnection"] = new SQLiteAdapter(),
                 ["mysqlconnection"] = new MySqlAdapter(),
-                ["fbconnection"] = new FbAdapter()
+                ["fbconnection"] = new FbAdapter(),
+                ["oledbconnection"] = new OleDbAdapter()
             };
 
         private static List<PropertyInfo> ComputedPropertiesCache(Type type)
