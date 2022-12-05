@@ -56,7 +56,11 @@ namespace Dapper.Contrib.Extensions
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ExplicitKeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> TypeProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ComputedProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetAllQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
+        /// <summary>
+        /// Key is a composite of connection type, entity type
+        /// </summary>
+        private static readonly ConcurrentDictionary<Tuple<RuntimeTypeHandle, RuntimeTypeHandle>, string> GetQueries = new ConcurrentDictionary<Tuple<RuntimeTypeHandle, RuntimeTypeHandle>, string>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableName = new ConcurrentDictionary<RuntimeTypeHandle, string>();
 
         private static readonly ISqlAdapter DefaultAdapter = new SqlServerAdapter();
@@ -171,13 +175,21 @@ namespace Dapper.Contrib.Extensions
         {
             var type = typeof(T);
 
-            if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
+            // get query caching depends on connection specific formatting
+            var typeTuple = Tuple.Create(connection.GetType().TypeHandle, type.TypeHandle);
+
+            if (!GetQueries.TryGetValue(typeTuple, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(Get));
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.Name} = @id";
-                GetQueries[type.TypeHandle] = sql;
+                var adapter = GetFormatter(connection);
+
+                var sbGetQuery = new StringBuilder($"SELECT * FROM {name} WHERE ");
+                adapter.AppendColumnName(sbGetQuery, key.Name);
+                sbGetQuery.Append(" = @id");
+                sql = sbGetQuery.ToString();
+                GetQueries[typeTuple] = sql;
             }
 
             var dynParams = new DynamicParameters();
@@ -234,13 +246,13 @@ namespace Dapper.Contrib.Extensions
             var type = typeof(T);
             var cacheType = typeof(List<T>);
 
-            if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
+            if (!GetAllQueries.TryGetValue(cacheType.TypeHandle, out string sql))
             {
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
                 sql = "select * from " + name;
-                GetQueries[cacheType.TypeHandle] = sql;
+                GetAllQueries[cacheType.TypeHandle] = sql;
             }
 
             if (!type.IsInterface) return connection.Query<T>(sql, null, transaction, commandTimeout: commandTimeout);
