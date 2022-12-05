@@ -30,7 +30,12 @@ namespace Dapper.Contrib.Extensions
                 var key = GetSingleKey<T>(nameof(GetAsync));
                 var name = GetTableName(type);
 
-                sql = $"SELECT * FROM {name} WHERE {key.Name} = @id";
+                var adapter = GetFormatter(connection);
+
+                var sbGetQuery = new StringBuilder($"SELECT * FROM {name} WHERE ");
+                adapter.AppendColumnName(sbGetQuery, key.Name);
+                sbGetQuery.Append(" = @id");
+                sql = sbGetQuery.ToString();
                 GetQueries[type.TypeHandle] = sql;
             }
 
