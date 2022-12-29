@@ -555,6 +555,9 @@ namespace Dapper.Contrib.Extensions
         public static GetParameterPrefixDelegate GetParameterPrefixForParameterCollection;
 #pragma warning restore CA2211 // Non-constant fields should not be visible
 
+        /// <summary>
+        /// '@'
+        /// </summary>
         private const string  _defaultParameterPrefix = "@";
 
         private static string GetParameterPrefixQuery()
