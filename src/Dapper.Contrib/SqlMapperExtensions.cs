@@ -42,6 +42,12 @@ namespace Dapper.Contrib.Extensions
         }
 
         /// <summary>
+        /// Defines a custom parameter prefix.
+        /// </summary>
+        /// <returns></returns>
+        public delegate string GetParameterPrefixDelegate();
+
+        /// <summary>
         /// The function to get a database type from the given <see cref="IDbConnection"/>.
         /// </summary>
         /// <param name="connection">The connection to get a database type name from.</param>
@@ -176,12 +182,12 @@ namespace Dapper.Contrib.Extensions
                 var key = GetSingleKey<T>(nameof(Get));
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.Name} = @id";
+                sql = $"select * from {name} where {key.Name} = {GetParameterPrefixQuery()}id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
             var dynParams = new DynamicParameters();
-            dynParams.Add("@id", id);
+            dynParams.Add($"{GetParameterPrefixParams()}id", id);
 
             T obj;
 
@@ -350,6 +356,7 @@ namespace Dapper.Contrib.Extensions
             var allPropertiesExceptKeyAndComputed = allProperties.Except(keyProperties.Union(computedProperties)).ToList();
 
             var adapter = GetFormatter(connection);
+            var parameterPrefix = GetParameterPrefixQuery();
 
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
@@ -363,7 +370,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sbParameterList.AppendFormat("@{0}", property.Name);
+                sbParameterList.AppendFormat("{0}{1}", parameterPrefix, property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbParameterList.Append(", ");
             }
@@ -438,11 +445,12 @@ namespace Dapper.Contrib.Extensions
             var nonIdProps = allProperties.Except(keyProperties.Union(computedProperties)).ToList();
 
             var adapter = GetFormatter(connection);
+            string parameterPrefix = GetParameterPrefixQuery();
 
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, property.Name, parameterPrefix);  //fix for issue #336
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -450,7 +458,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, property.Name, parameterPrefix);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -503,11 +511,12 @@ namespace Dapper.Contrib.Extensions
             sb.AppendFormat("delete from {0} where ", name);
 
             var adapter = GetFormatter(connection);
+            string parameterPrefix = GetParameterPrefixQuery();
 
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);  //fix for issue #336
+                adapter.AppendColumnNameEqualsValue(sb, property.Name, parameterPrefix);  //fix for issue #336
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -530,6 +539,32 @@ namespace Dapper.Contrib.Extensions
             var statement = $"delete from {name}";
             var deleted = connection.Execute(statement, null, transaction, commandTimeout);
             return deleted > 0;
+        }
+
+        /// <summary>
+        /// Defines a custom parameter prefix in the query. <inheritdoc cref="_defaultParameterPrefix"/> will be used as default
+        /// </summary>
+#pragma warning disable CA2211 // Non-constant fields should not be visible - I agree with you, but we can't do that until we break the API
+        public static GetParameterPrefixDelegate GetParameterPrefixForQuery;
+#pragma warning restore CA2211 // Non-constant fields should not be visible
+
+        /// <summary>
+        /// Defines a custom parameter prefix in the parameters collection. <inheritdoc cref="_defaultParameterPrefix"/> will be used as default
+        /// </summary>
+#pragma warning disable CA2211 // Non-constant fields should not be visible - I agree with you, but we can't do that until we break the API
+        public static GetParameterPrefixDelegate GetParameterPrefixForParameterCollection;
+#pragma warning restore CA2211 // Non-constant fields should not be visible
+
+        private const string  _defaultParameterPrefix = "@";
+
+        private static string GetParameterPrefixQuery()
+        {
+            return GetParameterPrefixForQuery?.Invoke() ?? _defaultParameterPrefix;
+        }
+
+        private static string GetParameterPrefixParams()
+        {
+            return GetParameterPrefixForParameterCollection?.Invoke() ?? _defaultParameterPrefix;
         }
 
         /// <summary>
@@ -798,7 +833,8 @@ public partial interface ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    void AppendColumnNameEqualsValue(StringBuilder sb, string columnName);
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix);
 }
 
 /// <summary>
@@ -851,9 +887,10 @@ public partial class SqlServerAdapter : ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix)
     {
-        sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
+        sb.AppendFormat("[{0}] = {2}{1}", columnName, columnName, parameterPrefix);
     }
 }
 
@@ -907,9 +944,10 @@ public partial class SqlCeServerAdapter : ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix)
     {
-        sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
+        sb.AppendFormat("[{0}] = {2}{1}", columnName, columnName, parameterPrefix);
     }
 }
 
@@ -962,9 +1000,10 @@ public partial class MySqlAdapter : ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix)
     {
-        sb.AppendFormat("`{0}` = @{1}", columnName, columnName);
+        sb.AppendFormat("`{0}` = {2}{1}", columnName, columnName, parameterPrefix);
     }
 }
 
@@ -1038,9 +1077,10 @@ public partial class PostgresAdapter : ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix)
     {
-        sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+        sb.AppendFormat("\"{0}\" = {2}{1}", columnName, columnName, parameterPrefix);
     }
 }
 
@@ -1091,9 +1131,10 @@ public partial class SQLiteAdapter : ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix)
     {
-        sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+        sb.AppendFormat("\"{0}\" = {2}{1}", columnName, columnName, parameterPrefix);
     }
 }
 
@@ -1148,8 +1189,9 @@ public partial class FbAdapter : ISqlAdapter
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
     /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="parameterPrefix">Parameter prefix.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName, string parameterPrefix)
     {
-        sb.AppendFormat("{0} = @{1}", columnName, columnName);
+        sb.AppendFormat("{0} = {2}{1}", columnName, columnName, parameterPrefix);
     }
 }
