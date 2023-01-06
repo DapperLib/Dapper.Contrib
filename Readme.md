@@ -167,12 +167,12 @@ Dapper.Contrib makes use of some optional attributes:
 * `[Write(true/false)]` -  this property is (not) writeable
 * `[Computed]` - this property is computed and should not be part of updates
 
-Custom prefix for parameters
+Custom parameter prefix
 -------
 By default Dapper.Contrib uses the character `@` as parameter prefix for SQL query and parameters collection. This can be changed throught the `GetParameterPrefixForQuery` and `GetParameterPrefixForParameterCollection` delegates:
 
 ```csharp
-// Defines ':' as prefix for SQL query and '?' for parameters 
+// Defines ':' as prefix for SQL query and '?' for parameters collection
 SqlMapperExtensions.GetParameterPrefixForQuery = () => ":";
 SqlMapperExtensions.GetParameterPrefixForParameterCollection = () => "?";
 ```
