@@ -169,7 +169,7 @@ Dapper.Contrib makes use of some optional attributes:
 
 Custom parameter prefix
 -------
-By default Dapper.Contrib uses the character `@` as parameter prefix for SQL query and parameters collection. This can be changed throught the `GetParameterPrefixForQuery` and `GetParameterPrefixForParameterCollection` delegates:
+By default Dapper.Contrib uses the character `@` as parameter prefix for SQL query and parameters collection. This can be changed through the `GetParameterPrefixForQuery` and `GetParameterPrefixForParameterCollection` delegates:
 
 ```csharp
 // Defines ':' as prefix for SQL query and '?' for parameters collection
