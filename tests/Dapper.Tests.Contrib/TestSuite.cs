@@ -375,6 +375,15 @@ namespace Dapper.Tests.Contrib
             InsertHelper(src => src.ToList());
         }
 
+        [Fact]
+        public void InsertListWithCustomParameterPrefix()
+        {
+            SqlMapperExtensions.GetParameterPrefixForQuery = () => "@";
+            SqlMapperExtensions.GetParameterPrefixForParameterCollection = () => "@";
+            
+            InsertHelper(src => src.ToList());
+        }
+
         private void InsertHelper<T>(Func<IEnumerable<User>, T> helper)
             where T : class
         {
