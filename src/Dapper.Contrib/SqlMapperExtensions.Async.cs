@@ -39,7 +39,7 @@ namespace Dapper.Contrib.Extensions
             }
 
             var dynParams = new DynamicParameters();
-            dynParams.Add(idParameter, id);
+            dynParams.Add("id", id);
 
             if (!type.IsInterface)
                 return (await connection.QueryAsync<T>(sql, dynParams, transaction, commandTimeout).ConfigureAwait(false)).FirstOrDefault();

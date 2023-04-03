@@ -593,7 +593,7 @@ namespace Dapper.Contrib
         /// <param name="columnName">The column name.</param>
         public void AppendColumnValue(StringBuilder sb, string columnName)
         {
-            sb.AppendFormat("@{0}", columnName);
+            sb.AppendFormat("?{0}?", columnName);
         }
 
         /// <summary>
@@ -857,35 +857,30 @@ namespace Dapper.Contrib
         public async Task<int> InsertAsync(IDbConnection connection, IDbTransaction transaction, int? commandTimeout, string tableName, string columnList, string parameterList, IEnumerable<PropertyInfo> keyProperties, object entityToInsert)
         {
             var sb = new StringBuilder();
-            sb.AppendFormat("INSERT INTO {0} ({1}) VALUES ({2})", tableName, columnList, parameterList);
+            sb.AppendFormat("insert into {0} ({1}) values ({2})", tableName, columnList, parameterList);
 
             // If no primary key then safe to assume a join table with not too much data to return
             var propertyInfos = keyProperties as PropertyInfo[] ?? keyProperties.ToArray();
-            if (propertyInfos.Length == 0)
+
+            sb.Append(" select @@identity ");
+            var first = true;
+            foreach (var property in propertyInfos)
             {
-                sb.Append(" RETURNING *");
-            }
-            else
-            {
-                sb.Append(" RETURNING ");
-                bool first = true;
-                foreach (var property in propertyInfos)
-                {
-                    if (!first)
-                        sb.Append(", ");
-                    first = false;
-                    sb.Append(property.Name);
-                }
+                if (!first)
+                    sb.Append(", ");
+                first = false;
+                sb.Append(property.Name);
             }
 
-            var results = await connection.QueryAsync(sb.ToString(), entityToInsert, transaction, commandTimeout).ConfigureAwait(false);
+
+            var results = connection.Query(sb.ToString(), entityToInsert, transaction, commandTimeout: commandTimeout).ToList();
 
             // Return the key by assigning the corresponding property in the object - by product is that it supports compound primary keys
             var id = 0;
             foreach (var p in propertyInfos)
             {
-                var value = ((IDictionary<string, object>)results.First())[p.Name.ToLower()];
-                p.SetValue(entityToInsert, value, null);
+                var value = ((IDictionary<string, object>)results[0])[p.Name];
+                p.SetValue(entityToInsert, Convert.ChangeType(value, p.PropertyType), null);
                 if (id == 0)
                     id = Convert.ToInt32(value);
             }
