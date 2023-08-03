@@ -74,7 +74,12 @@ namespace Dapper.Contrib.Extensions
         private static IReadOnlyCollection<PropertyInfo> ExplicitKeyPropertiesCache(Type type) =>
             PropertyInfoCache(type).ExplicitKeyProperties;
 
-        private static IReadOnlyCollection<PropertyInfo> KeyPropertiesCache(Type type) => PropertyInfoCache(type).KeyProperties;
+        private static IEnumerable<PropertyInfo> KeyPropertiesCache(Type type, bool includeId = true)
+        {
+            var properties = PropertyInfoCache(type);
+            return includeId ? properties.KeyPropertiesIncludingId : properties.KeyProperties;
+        }
+
         private static IReadOnlyCollection<PropertyInfo> TypePropertiesCache(Type type) => PropertyInfoCache(type).AllProperties;
 
         private static PropertyInfoWrapper PropertyInfoCache(Type type) =>
@@ -681,6 +686,20 @@ namespace Dapper.Contrib.Extensions
                     InitializeProperties();
 
                     return _keyProperties.AsReadOnly();
+                }
+            }
+
+            public IEnumerable<PropertyInfo> KeyPropertiesIncludingId
+            {
+                get
+                {
+                    InitializeProperties();
+                    if (PropertyNamedId is null)
+                    {
+                        return KeyProperties;
+                    }
+
+                    return KeyProperties.Concat(new[] { PropertyNamedId });
                 }
             }
 
