@@ -52,10 +52,7 @@ namespace Dapper.Contrib.Extensions
         /// <param name="type">The <see cref="Type"/> to get a table name for.</param>
         public delegate string TableNameMapperDelegate(Type type);
 
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> KeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ExplicitKeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> TypeProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ComputedProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
+        private static readonly ConcurrentDictionary<RuntimeTypeHandle, PropertyInfoWrapper> TypeProperties = new ConcurrentDictionary<RuntimeTypeHandle, PropertyInfoWrapper>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableName = new ConcurrentDictionary<RuntimeTypeHandle, string>();
 
@@ -71,95 +68,38 @@ namespace Dapper.Contrib.Extensions
                 ["fbconnection"] = new FbAdapter()
             };
 
-        private static List<PropertyInfo> ComputedPropertiesCache(Type type)
+        private static IReadOnlyCollection<PropertyInfo> ComputedPropertiesCache(Type type) =>
+            PropertyInfoCache(type).ComputedProperties;
+
+        private static IReadOnlyCollection<PropertyInfo> ExplicitKeyPropertiesCache(Type type) =>
+            PropertyInfoCache(type).ExplicitKeyProperties;
+
+        private static IReadOnlyCollection<PropertyInfo> KeyPropertiesCache(Type type, bool includeId = true)
         {
-            if (ComputedProperties.TryGetValue(type.TypeHandle, out IEnumerable<PropertyInfo> pi))
-            {
-                return pi.ToList();
-            }
+            var properties = PropertyInfoCache(type);
 
-            var computedProperties = TypePropertiesCache(type).Where(p => p.GetCustomAttributes(true).Any(a => a is ComputedAttribute)).ToList();
-
-            ComputedProperties[type.TypeHandle] = computedProperties;
-            return computedProperties;
+            return includeId
+                ? properties.KeyProperties
+                : properties.KeyPropertiesExceptId;
         }
 
-        private static List<PropertyInfo> ExplicitKeyPropertiesCache(Type type)
-        {
-            if (ExplicitKeyProperties.TryGetValue(type.TypeHandle, out IEnumerable<PropertyInfo> pi))
-            {
-                return pi.ToList();
-            }
+        private static IReadOnlyCollection<PropertyInfo> TypePropertiesCache(Type type) => PropertyInfoCache(type).AllProperties;
 
-            var explicitKeyProperties = TypePropertiesCache(type).Where(p => p.GetCustomAttributes(true).Any(a => a is ExplicitKeyAttribute)).ToList();
-
-            ExplicitKeyProperties[type.TypeHandle] = explicitKeyProperties;
-            return explicitKeyProperties;
-        }
-
-        private static List<PropertyInfo> KeyPropertiesCache(Type type)
-        {
-            if (KeyProperties.TryGetValue(type.TypeHandle, out IEnumerable<PropertyInfo> pi))
-            {
-                return pi.ToList();
-            }
-
-            var allProperties = TypePropertiesCache(type);
-            var keyProperties = allProperties.Where(p => p.GetCustomAttributes(true).Any(a => a is KeyAttribute)).ToList();
-
-            if (keyProperties.Count == 0)
-            {
-                var idProp = allProperties.Find(p => string.Equals(p.Name, "id", StringComparison.CurrentCultureIgnoreCase));
-                if (idProp != null && !idProp.GetCustomAttributes(true).Any(a => a is ExplicitKeyAttribute))
-                {
-                    keyProperties.Add(idProp);
-                }
-            }
-
-            KeyProperties[type.TypeHandle] = keyProperties;
-            return keyProperties;
-        }
-
-        private static List<PropertyInfo> TypePropertiesCache(Type type)
-        {
-            if (TypeProperties.TryGetValue(type.TypeHandle, out IEnumerable<PropertyInfo> pis))
-            {
-                return pis.ToList();
-            }
-
-            var properties = type.GetProperties().Where(IsWriteable).ToArray();
-            TypeProperties[type.TypeHandle] = properties;
-            return properties.ToList();
-        }
-
-        private static bool IsWriteable(PropertyInfo pi)
-        {
-            var attributes = pi.GetCustomAttributes(typeof(WriteAttribute), false).AsList();
-            if (attributes.Count != 1) return true;
-
-            var writeAttribute = (WriteAttribute)attributes[0];
-            return writeAttribute.Write;
-        }
+        private static PropertyInfoWrapper PropertyInfoCache(Type type) =>
+            TypeProperties.GetOrAdd(type.TypeHandle, _ => new PropertyInfoWrapper(type));
 
         private static PropertyInfo GetSingleKey<T>(string method)
         {
             var type = typeof(T);
-            var keys = KeyPropertiesCache(type);
-            var explicitKeys = ExplicitKeyPropertiesCache(type);
-            var keyCount = keys.Count + explicitKeys.Count;
-            if (keyCount > 1)
-                throw new DataException($"{method}<T> only supports an entity with a single [Key] or [ExplicitKey] property. [Key] Count: {keys.Count}, [ExplicitKey] Count: {explicitKeys.Count}");
-            if (keyCount == 0)
-                throw new DataException($"{method}<T> only supports an entity with a [Key] or an [ExplicitKey] property");
 
-            return keys.Count > 0 ? keys[0] : explicitKeys[0];
+            return PropertyInfoCache(type).GetSingleKey(method);
         }
 
         /// <summary>
-        /// Returns a single entity by a single id from table "Ts".  
+        /// Returns a single entity by a single id from table "Ts".
         /// Id must be marked with [Key] attribute.
         /// Entities created from interfaces are tracked/intercepted for changes and used by the Update() extension
-        /// for optimal performance. 
+        /// for optimal performance.
         /// </summary>
         /// <typeparam name="T">Interface or type to create and populate</typeparam>
         /// <param name="connection">Open SqlConnection</param>
@@ -696,6 +636,258 @@ namespace Dapper.Contrib.Extensions
                 var setMethod = typeof(T).GetMethod("set_" + propertyName);
                 typeBuilder.DefineMethodOverride(currGetPropMthdBldr, getMethod);
                 typeBuilder.DefineMethodOverride(currSetPropMthdBldr, setMethod);
+            }
+        }
+
+        private class PropertyInfoWrapper
+        {
+            [Flags]
+            private enum PropertyKind
+            {
+                None = 0,
+                Key = 1 << 0,
+                ExplicitKey = 1 << 1,
+                Computed = 1 << 2,
+                NamedId = 1 << 3
+            }
+
+            private enum ExceptionKind
+            {
+                None = 0,
+                NoKey,
+                TooManyKeys
+            }
+
+            private readonly Lazy<List<PropertyInfo>> _allProperties;
+            private readonly Lazy<List<PropertyInfo>> _keyPropertiesExceptId;
+            private readonly Lazy<PropertyInfo> _singleKey;
+            private List<PropertyInfo> _keyProperties = new List<PropertyInfo>();
+            private List<PropertyInfo> _explicitKeyProperties = new List<PropertyInfo>();
+            private List<PropertyInfo> _computedProperties = new List<PropertyInfo>();
+            private PropertyInfo _propertyNamedId;
+            private ExceptionKind _exceptionKind;
+
+            /// <summary>
+            ///     Gets all the properties of the type represented by this instance
+            /// </summary>
+            public IReadOnlyCollection<PropertyInfo> AllProperties
+            {
+                get
+                {
+                    InitializeProperties();
+
+                    return _allProperties.Value.AsReadOnly();
+                }
+            }
+
+            /// <summary>
+            ///     Gets the properties that are decorated with [Key] attribute
+            ///     or the property named "Id" (case insensitive)
+            /// </summary>
+            public IReadOnlyCollection<PropertyInfo> KeyProperties
+            {
+                get
+                {
+                    InitializeProperties();
+
+                    return _keyProperties.AsReadOnly();
+                }
+            }
+
+            public IReadOnlyCollection<PropertyInfo> KeyPropertiesExceptId => _keyPropertiesExceptId.Value.AsReadOnly();
+
+
+            /// <summary>
+            ///     Gets the properties that are decorated with [ExplicitKey] attribute
+            /// </summary>
+            public IReadOnlyCollection<PropertyInfo> ExplicitKeyProperties
+            {
+                get
+                {
+                    InitializeProperties();
+
+                    return _explicitKeyProperties.AsReadOnly();
+                }
+            }
+
+            /// <summary>
+            ///     Gets the properties that are decorated with [Computed] attribute
+            /// </summary>
+            public IReadOnlyCollection<PropertyInfo> ComputedProperties
+            {
+                get
+                {
+                    InitializeProperties();
+
+                    return _computedProperties.AsReadOnly();
+                }
+            }
+
+            /// <summary>
+            ///     Gets the property named "Id" (case insensitive) if one exists, otherwise null
+            /// </summary>
+            public PropertyInfo PropertyNamedId => _propertyNamedId;
+
+            public PropertyInfoWrapper(Type type)
+            {
+                _allProperties = new Lazy<List<PropertyInfo>>(() => GetAllProperties(type).ToList());
+                _keyPropertiesExceptId = new Lazy<List<PropertyInfo>>(() => KeyProperties.Where(p => !IsPropertyNamedId(p)).ToList());
+                _singleKey = new Lazy<PropertyInfo>(() => GetSingleKey(out _exceptionKind));
+            }
+
+            public PropertyInfo GetSingleKey(string method)
+            {
+                if (_singleKey.Value != null)
+                {
+                    return _singleKey.Value;
+                }
+
+                var exception = GetException(_exceptionKind, method);
+
+                throw exception;
+            }
+
+            private static bool IsWriteable(PropertyInfo pi)
+            {
+                var attributes = pi.GetCustomAttributes(typeof(WriteAttribute), false).AsList();
+                if (attributes.Count != 1) return true;
+
+                var writeAttribute = (WriteAttribute)attributes[0];
+                return writeAttribute.Write;
+            }
+
+            private void InitializeProperties()
+            {
+                _ = _allProperties.Value;
+            }
+
+            private IEnumerable<PropertyInfo> GetAllProperties(Type type)
+            {
+                var allProperties = type.GetProperties().Where(IsWriteable).ToArray();
+
+                AssignPropertyInfo(allProperties,
+                    ref _keyProperties,
+                    ref _explicitKeyProperties,
+                    ref _computedProperties,
+                    ref _propertyNamedId);
+
+                return allProperties;
+            }
+
+            private PropertyInfo GetSingleKey(out ExceptionKind exceptionKind)
+            {
+                var keyCount = KeyProperties.Count + ExplicitKeyProperties.Count;
+                switch (keyCount)
+                {
+                    case 0:
+                        exceptionKind = ExceptionKind.NoKey;
+
+                        return null;
+                    case 1:
+                        exceptionKind = ExceptionKind.None;
+
+                        return KeyProperties.Count > 0 ? KeyProperties.FirstOrDefault() : ExplicitKeyProperties.FirstOrDefault();
+                    case 2 when KeyPropertiesExceptId.Count == 1:
+                        exceptionKind = ExceptionKind.None;
+
+                        return KeyPropertiesExceptId.FirstOrDefault();
+                    default:
+                        exceptionKind = ExceptionKind.TooManyKeys;
+
+                        return null;
+                }
+            }
+
+            private DataException GetException(ExceptionKind exceptionKind, string method) =>
+                exceptionKind switch
+                {
+                    ExceptionKind.None => throw new InvalidOperationException(),
+                    ExceptionKind.NoKey => GetNoKeyException(method),
+                    ExceptionKind.TooManyKeys => GetTooManyKeysException(method),
+                    var _ => throw new ArgumentOutOfRangeException(nameof(exceptionKind), exceptionKind, null)
+                };
+
+            private DataException GetTooManyKeysException(string method) =>
+                new("{method}<T> only supports an entity with a single [Key] or [ExplicitKey] property. [Key] Count: {KeyProperties.Count}, [ExplicitKey] Count: {ExplicitKeyProperties.Count}");
+
+            private static DataException GetNoKeyException(string method) =>
+                new($"{method}<T> only supports an entity with a [Key] or an [ExplicitKey] property");
+
+            private static void AssignPropertyInfo(IEnumerable<PropertyInfo> properties,
+                                                   ref List<PropertyInfo> keys,
+                                                   ref List<PropertyInfo> explicitKeys,
+                                                   ref List<PropertyInfo> computedProperties,
+                                                   ref PropertyInfo propertyNamedId)
+            {
+                foreach (var propertyInfo in properties)
+                {
+                    var propertyKind = GetPropertyKind(propertyInfo);
+
+                    if (propertyKind.HasFlag(PropertyKind.Key))
+                    {
+                        keys.Add(propertyInfo);
+                    }
+
+                    if (propertyKind.HasFlag(PropertyKind.ExplicitKey))
+                    {
+                        explicitKeys.Add(propertyInfo);
+                    }
+
+                    if (propertyKind.HasFlag(PropertyKind.Computed))
+                    {
+                        computedProperties.Add(propertyInfo);
+                    }
+
+                    if (propertyKind.HasFlag(PropertyKind.NamedId))
+                    {
+                        propertyNamedId ??= propertyInfo;
+
+                        if (!propertyKind.HasFlag(PropertyKind.ExplicitKey) && !propertyKind.HasFlag(PropertyKind.Key))
+                        {
+                            keys.Add(propertyInfo);
+                        }
+                    }
+                }
+            }
+
+            private static PropertyKind GetPropertyKind(PropertyInfo propertyInfo)
+            {
+                var propertyKind = GetPropertyKindFromAttribute(propertyInfo);
+
+                if (IsPropertyNamedId(propertyInfo))
+                {
+                    propertyKind = PropertyKind.NamedId;
+                }
+
+                return propertyKind;
+            }
+
+            private static bool IsPropertyNamedId(PropertyInfo propertyInfo) =>
+                string.Equals(propertyInfo.Name, "id", StringComparison.CurrentCultureIgnoreCase);
+
+            private static PropertyKind GetPropertyKindFromAttribute(PropertyInfo propertyInfo)
+            {
+                var customAttributes = propertyInfo.GetCustomAttributes(true);
+                var propertyKind = PropertyKind.None;
+
+                foreach (var customAttribute in customAttributes)
+                    switch (customAttribute)
+                    {
+                        case KeyAttribute:
+                            propertyKind |= PropertyKind.Key;
+
+                            break;
+                        case ExplicitKeyAttribute:
+                            propertyKind |= PropertyKind.ExplicitKey;
+
+                            break;
+                        case ComputedAttribute:
+                            propertyKind |= PropertyKind.Computed;
+
+                            break;
+                    }
+
+                return propertyKind;
             }
         }
     }
