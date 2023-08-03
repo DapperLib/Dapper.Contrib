@@ -694,7 +694,7 @@ namespace Dapper.Contrib.Extensions
             }
 
             public IReadOnlyCollection<PropertyInfo> KeyPropertiesExceptId =>
-                KeyProperties.Where(p => p != PropertyNamedId).ToArray();
+                KeyProperties.Where(p => !IsPropertyNamedId(p)).ToArray();
 
 
             /// <summary>
@@ -813,8 +813,7 @@ namespace Dapper.Contrib.Extensions
                 };
 
             private DataException GetTooManyKeysException(string method) =>
-                new(
-                    $"{method}<T> only supports an entity with a single [Key] or [ExplicitKey] property. [Key] Count: {KeyProperties.Count}, [ExplicitKey] Count: {ExplicitKeyProperties.Count}");
+                new("{method}<T> only supports an entity with a single [Key] or [ExplicitKey] property. [Key] Count: {KeyProperties.Count}, [ExplicitKey] Count: {ExplicitKeyProperties.Count}");
 
             private static DataException GetNoKeyException(string method) =>
                 new($"{method}<T> only supports an entity with a [Key] or an [ExplicitKey] property");
