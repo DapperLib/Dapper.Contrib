@@ -77,7 +77,10 @@ namespace Dapper.Contrib.Extensions
         private static IEnumerable<PropertyInfo> KeyPropertiesCache(Type type, bool includeId = true)
         {
             var properties = PropertyInfoCache(type);
-            return includeId ? properties.KeyPropertiesIncludingId : properties.KeyProperties;
+
+            return includeId
+                ? properties.KeyProperties
+                : properties.KeyProperties.Where(p => p != properties.PropertyNamedId);
         }
 
         private static IReadOnlyCollection<PropertyInfo> TypePropertiesCache(Type type) => PropertyInfoCache(type).AllProperties;
@@ -678,6 +681,7 @@ namespace Dapper.Contrib.Extensions
 
             /// <summary>
             ///     Gets the properties that are decorated with [Key] attribute
+            ///     or the property named "Id" (case insensitive)
             /// </summary>
             public IReadOnlyCollection<PropertyInfo> KeyProperties
             {
@@ -689,19 +693,6 @@ namespace Dapper.Contrib.Extensions
                 }
             }
 
-            public IEnumerable<PropertyInfo> KeyPropertiesIncludingId
-            {
-                get
-                {
-                    InitializeProperties();
-                    if (PropertyNamedId is null)
-                    {
-                        return KeyProperties;
-                    }
-
-                    return KeyProperties.Concat(new[] { PropertyNamedId });
-                }
-            }
 
             /// <summary>
             ///     Gets the properties that are decorated with [ExplicitKey] attribute
@@ -782,14 +773,18 @@ namespace Dapper.Contrib.Extensions
             private PropertyInfo GetSingleKey(out ExceptionKind exceptionKind)
             {
                 var keyCount = KeyProperties.Count + ExplicitKeyProperties.Count;
-                if (keyCount > 1)
+
+                var idProperty = PropertyNamedId;
+                var keyCountExcludingId = keyCount - (idProperty == null ? 0 : 1);
+
+                if (keyCountExcludingId > 1)
                 {
                     exceptionKind = ExceptionKind.TooManyKeys;
 
                     return null;
                 }
 
-                if (keyCount == 0 && PropertyNamedId == null)
+                if (keyCount == 0)
                 {
                     exceptionKind = ExceptionKind.NoKey;
 
@@ -798,8 +793,9 @@ namespace Dapper.Contrib.Extensions
 
                 exceptionKind = ExceptionKind.None;
 
-                var singleKey = KeyProperties.FirstOrDefault()
-                                ?? ExplicitKeyProperties.FirstOrDefault() ?? PropertyNamedId;
+                var singleKey = KeyProperties.FirstOrDefault(p => p != idProperty) ??
+                                ExplicitKeyProperties.FirstOrDefault() ??
+                                idProperty;
 
                 return singleKey ?? throw new InvalidOperationException();
             }
@@ -830,9 +826,14 @@ namespace Dapper.Contrib.Extensions
                 {
                     var propertyKind = GetPropertyKind(propertyInfo);
 
-                    if (propertyKind.HasFlag(PropertyKind.Key))
+                    if (propertyKind.HasFlag(PropertyKind.Key | PropertyKind.NamedId))
                     {
                         keys.Add(propertyInfo);
+
+                        if (propertyNamedId is null && propertyKind.HasFlag(PropertyKind.NamedId))
+                        {
+                            propertyNamedId ??= propertyInfo;
+                        }
                     }
 
                     if (propertyKind.HasFlag(PropertyKind.ExplicitKey))
@@ -843,11 +844,6 @@ namespace Dapper.Contrib.Extensions
                     if (propertyKind.HasFlag(PropertyKind.Computed))
                     {
                         computedProperties.Add(propertyInfo);
-                    }
-
-                    if (propertyKind.HasFlag(PropertyKind.NamedId))
-                    {
-                        propertyNamedId = propertyInfo;
                     }
                 }
             }
