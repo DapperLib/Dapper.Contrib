@@ -829,14 +829,9 @@ namespace Dapper.Contrib.Extensions
                 {
                     var propertyKind = GetPropertyKind(propertyInfo);
 
-                    if (propertyKind.HasFlag(PropertyKind.Key | PropertyKind.NamedId))
+                    if (propertyKind.HasFlag(PropertyKind.Key))
                     {
                         keys.Add(propertyInfo);
-
-                        if (propertyNamedId is null && propertyKind.HasFlag(PropertyKind.NamedId))
-                        {
-                            propertyNamedId ??= propertyInfo;
-                        }
                     }
 
                     if (propertyKind.HasFlag(PropertyKind.ExplicitKey))
@@ -847,6 +842,16 @@ namespace Dapper.Contrib.Extensions
                     if (propertyKind.HasFlag(PropertyKind.Computed))
                     {
                         computedProperties.Add(propertyInfo);
+                    }
+
+                    if (propertyKind.HasFlag(PropertyKind.NamedId))
+                    {
+                        propertyNamedId ??= propertyInfo;
+
+                        if (!propertyKind.HasFlag(PropertyKind.ExplicitKey) && !propertyKind.HasFlag(PropertyKind.Key))
+                        {
+                            keys.Add(propertyInfo);
+                        }
                     }
                 }
             }
