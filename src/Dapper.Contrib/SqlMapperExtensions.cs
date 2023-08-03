@@ -74,13 +74,13 @@ namespace Dapper.Contrib.Extensions
         private static IReadOnlyCollection<PropertyInfo> ExplicitKeyPropertiesCache(Type type) =>
             PropertyInfoCache(type).ExplicitKeyProperties;
 
-        private static IEnumerable<PropertyInfo> KeyPropertiesCache(Type type, bool includeId = true)
+        private static IReadOnlyCollection<PropertyInfo> KeyPropertiesCache(Type type, bool includeId = true)
         {
             var properties = PropertyInfoCache(type);
 
             return includeId
                 ? properties.KeyProperties
-                : properties.KeyProperties.Where(p => p != properties.PropertyNamedId);
+                : properties.KeyPropertiesExceptId;
         }
 
         private static IReadOnlyCollection<PropertyInfo> TypePropertiesCache(Type type) => PropertyInfoCache(type).AllProperties;
@@ -693,6 +693,9 @@ namespace Dapper.Contrib.Extensions
                 }
             }
 
+            public IReadOnlyCollection<PropertyInfo> KeyPropertiesExceptId =>
+                KeyProperties.Where(p => p != PropertyNamedId).ToArray();
+
 
             /// <summary>
             ///     Gets the properties that are decorated with [ExplicitKey] attribute
@@ -793,7 +796,7 @@ namespace Dapper.Contrib.Extensions
 
                 exceptionKind = ExceptionKind.None;
 
-                var singleKey = KeyProperties.FirstOrDefault(p => p != idProperty) ??
+                var singleKey = KeyProperties.FirstOrDefault(p => !IsPropertyNamedId(p)) ??
                                 ExplicitKeyProperties.FirstOrDefault() ??
                                 idProperty;
 
