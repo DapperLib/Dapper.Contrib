@@ -659,6 +659,7 @@ namespace Dapper.Contrib.Extensions
             }
 
             private readonly Lazy<List<PropertyInfo>> _allProperties;
+            private readonly Lazy<List<PropertyInfo>> _keyPropertiesExceptId;
             private readonly Lazy<PropertyInfo> _singleKey;
             private List<PropertyInfo> _keyProperties = new List<PropertyInfo>();
             private List<PropertyInfo> _explicitKeyProperties = new List<PropertyInfo>();
@@ -693,8 +694,7 @@ namespace Dapper.Contrib.Extensions
                 }
             }
 
-            public IReadOnlyCollection<PropertyInfo> KeyPropertiesExceptId =>
-                KeyProperties.Where(p => !IsPropertyNamedId(p)).ToArray();
+            public IReadOnlyCollection<PropertyInfo> KeyPropertiesExceptId => _keyPropertiesExceptId.Value.AsReadOnly();
 
 
             /// <summary>
@@ -731,6 +731,7 @@ namespace Dapper.Contrib.Extensions
             public PropertyInfoWrapper(Type type)
             {
                 _allProperties = new Lazy<List<PropertyInfo>>(() => GetAllProperties(type).ToList());
+                _keyPropertiesExceptId = new Lazy<List<PropertyInfo>>(() => KeyProperties.Where(p => !IsPropertyNamedId(p)).ToList());
                 _singleKey = new Lazy<PropertyInfo>(() => GetSingleKey(out _exceptionKind));
             }
 
@@ -776,31 +777,25 @@ namespace Dapper.Contrib.Extensions
             private PropertyInfo GetSingleKey(out ExceptionKind exceptionKind)
             {
                 var keyCount = KeyProperties.Count + ExplicitKeyProperties.Count;
-
-                var idProperty = PropertyNamedId;
-                var keyCountExcludingId = keyCount - (idProperty == null ? 0 : 1);
-
-                if (keyCountExcludingId > 1)
+                switch (keyCount)
                 {
-                    exceptionKind = ExceptionKind.TooManyKeys;
+                    case 0:
+                        exceptionKind = ExceptionKind.NoKey;
 
-                    return null;
+                        return null;
+                    case 1:
+                        exceptionKind = ExceptionKind.None;
+
+                        return KeyProperties.Count > 0 ? KeyProperties.FirstOrDefault() : ExplicitKeyProperties.FirstOrDefault();
+                    case 2 when KeyPropertiesExceptId.Count == 1:
+                        exceptionKind = ExceptionKind.None;
+
+                        return KeyPropertiesExceptId.FirstOrDefault();
+                    default:
+                        exceptionKind = ExceptionKind.TooManyKeys;
+
+                        return null;
                 }
-
-                if (keyCount == 0)
-                {
-                    exceptionKind = ExceptionKind.NoKey;
-
-                    return null;
-                }
-
-                exceptionKind = ExceptionKind.None;
-
-                var singleKey = KeyProperties.FirstOrDefault(p => !IsPropertyNamedId(p)) ??
-                                ExplicitKeyProperties.FirstOrDefault() ??
-                                idProperty;
-
-                return singleKey ?? throw new InvalidOperationException();
             }
 
             private DataException GetException(ExceptionKind exceptionKind, string method) =>
@@ -859,7 +854,7 @@ namespace Dapper.Contrib.Extensions
             {
                 var propertyKind = GetPropertyKindFromAttribute(propertyInfo);
 
-                if (propertyKind == PropertyKind.None && IsPropertyNamedId(propertyInfo))
+                if (IsPropertyNamedId(propertyInfo))
                 {
                     propertyKind = PropertyKind.NamedId;
                 }
