@@ -128,7 +128,15 @@ namespace Dapper.Contrib.Extensions
             }
 
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                .Where(IsWriteable).ToArray();
+                .Where(IsWriteable)
+                .Where(p => !IsPrivate(p))
+                .ToArray();
+
+            if (properties.Length == 0)
+            {
+                throw new DataException($"Entity of type '{type.FullName}' has no accessible properties");
+            }
+
             TypeProperties[type.TypeHandle] = properties;
             return properties.ToList();
         }
@@ -140,6 +148,11 @@ namespace Dapper.Contrib.Extensions
 
             var writeAttribute = (WriteAttribute)attributes[0];
             return writeAttribute.Write;
+        }
+
+        private static bool IsPrivate(PropertyInfo pi)
+        {
+            return pi.GetGetMethod()?.IsPrivate ?? true;
         }
 
         private static PropertyInfo GetSingleKey<T>(string method)
@@ -157,10 +170,10 @@ namespace Dapper.Contrib.Extensions
         }
 
         /// <summary>
-        /// Returns a single entity by a single id from table "Ts".  
+        /// Returns a single entity by a single id from table "Ts".
         /// Id must be marked with [Key] attribute.
         /// Entities created from interfaces are tracked/intercepted for changes and used by the Update() extension
-        /// for optimal performance. 
+        /// for optimal performance.
         /// </summary>
         /// <typeparam name="T">Interface or type to create and populate</typeparam>
         /// <param name="connection">Open SqlConnection</param>
@@ -288,7 +301,7 @@ namespace Dapper.Contrib.Extensions
             }
             else
             {
-                //NOTE: This as dynamic trick falls back to handle both our own Table-attribute as well as the one in EntityFramework 
+                //NOTE: This as dynamic trick falls back to handle both our own Table-attribute as well as the one in EntityFramework
                 var tableAttrName =
                     type.GetCustomAttribute<TableAttribute>(false)?.Name
                     ?? (type.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic)?.Name;
@@ -645,7 +658,7 @@ namespace Dapper.Contrib.Extensions
 
             private static void CreateProperty<T>(TypeBuilder typeBuilder, string propertyName, Type propType, MethodInfo setIsDirtyMethod, bool isIdentity)
             {
-                //Define the field and the property 
+                //Define the field and the property
                 var field = typeBuilder.DefineField("_" + propertyName, propType, FieldAttributes.Private);
                 var property = typeBuilder.DefineProperty(propertyName,
                                                System.Reflection.PropertyAttributes.None,
