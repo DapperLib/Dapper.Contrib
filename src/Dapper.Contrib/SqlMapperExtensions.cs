@@ -127,7 +127,16 @@ namespace Dapper.Contrib.Extensions
                 return pis.ToList();
             }
 
-            var properties = type.GetProperties().Where(IsWriteable).ToArray();
+            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(IsWriteable)
+                .Where(p => !IsPrivate(p))
+                .ToArray();
+
+            if (properties.Length == 0)
+            {
+                throw new DataException($"Entity of type '{type.FullName}' has no accessible properties");
+            }
+
             TypeProperties[type.TypeHandle] = properties;
             return properties.ToList();
         }
@@ -139,6 +148,11 @@ namespace Dapper.Contrib.Extensions
 
             var writeAttribute = (WriteAttribute)attributes[0];
             return writeAttribute.Write;
+        }
+
+        private static bool IsPrivate(PropertyInfo pi)
+        {
+            return pi.GetGetMethod()?.IsPrivate ?? true;
         }
 
         private static PropertyInfo GetSingleKey<T>(string method)
@@ -156,7 +170,7 @@ namespace Dapper.Contrib.Extensions
         }
 
         /// <summary>
-        /// Returns a single entity by a single id from table "Ts".  
+        /// Returns a single entity by a single id from table "Ts". 
         /// Id must be marked with [Key] attribute.
         /// Entities created from interfaces are tracked/intercepted for changes and used by the Update() extension
         /// for optimal performance. 
