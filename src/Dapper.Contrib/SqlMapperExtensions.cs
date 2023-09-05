@@ -127,7 +127,8 @@ namespace Dapper.Contrib.Extensions
                 return pis.ToList();
             }
 
-            var properties = type.GetProperties().Where(IsWriteable).ToArray();
+            var properties = type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                .Where(IsWriteable).ToArray();
             TypeProperties[type.TypeHandle] = properties;
             return properties.ToList();
         }
