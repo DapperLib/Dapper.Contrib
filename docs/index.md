@@ -20,4 +20,4 @@ Note: to get the latest pre-release build, add ` -Pre` to the end of the command
 
 ### Previous Releases
 
-Prior to v2.0.90, Dapper.Contrib was part of the main repository - please see release notes at [https://dapperlib.github.io/Dapper/](https://dapperlib.github.io/Dapper/)
+Prior to v2.0.90, Dapper.Contrib was part of the main repository - please see release notes at [https://dapperlib.dev/](https://dapperlib.dev/)
