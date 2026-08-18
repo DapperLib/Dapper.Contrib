@@ -4,7 +4,7 @@ Dapper.Contrib - a simple object mapper for .Net
 
 Release Notes
 -------------
-Located at [dapperlib.github.io/Dapper.Contrib](https://dapperlib.github.io/Dapper.Contrib/)
+Located at [contrib.dapperlib.dev](https://contrib.dapperlib.dev/)
 
 Packages
 --------
