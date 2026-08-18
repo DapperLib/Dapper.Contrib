@@ -16,7 +16,7 @@ Note: to get the latest pre-release build, add ` -Pre` to the end of the command
 
 ### Unreleased
 
-(note: new PRs will not be merged until they add release note wording here)
+* Added Column Attribute for different column name to property name
 
 ### Previous Releases
 

@@ -8,6 +8,11 @@
     <TargetFrameworks>net461;netstandard2.0;net5.0</TargetFrameworks>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);CA1050</NoWarn>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>Dapper.Contrib.WithColumn</PackageId>
+    <PackageVersion>1.0.3</PackageVersion>
+    <PackageProjectUrl>https://github.com/Tiefseetauchner/Dapper.Contrib</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Tiefseetauchner/Dapper.Contrib</RepositoryUrl>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Dapper" Version="2.0.78" />
