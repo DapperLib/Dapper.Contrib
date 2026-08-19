@@ -30,12 +30,12 @@ namespace Dapper.Contrib.Extensions
                 var key = GetSingleKey<T>(nameof(GetAsync));
                 var name = GetTableName(type);
 
-                sql = $"SELECT * FROM {name} WHERE {key.Name} = @id";
+                sql = $"SELECT * FROM {name} WHERE {key.Name} = {GetParameterPrefixQuery()}id";
                 GetQueries[type.TypeHandle] = sql;
             }
 
             var dynParams = new DynamicParameters();
-            dynParams.Add("@id", id);
+            dynParams.Add($"{GetParameterPrefixParams()}id", id);
 
             if (!type.IsInterface)
                 return (await connection.QueryAsync<T>(sql, dynParams, transaction, commandTimeout).ConfigureAwait(false)).FirstOrDefault();
@@ -168,6 +168,7 @@ namespace Dapper.Contrib.Extensions
             var keyProperties = KeyPropertiesCache(type).ToList();
             var computedProperties = ComputedPropertiesCache(type);
             var allPropertiesExceptKeyAndComputed = allProperties.Except(keyProperties.Union(computedProperties)).ToList();
+            string parameterPrefix = GetParameterPrefixQuery();
 
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
@@ -181,7 +182,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                sbParameterList.AppendFormat("@{0}", property.Name);
+                sbParameterList.AppendFormat("{0}{1}", parameterPrefix, property.Name);
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbParameterList.Append(", ");
             }
@@ -248,11 +249,12 @@ namespace Dapper.Contrib.Extensions
             var nonIdProps = allProperties.Except(keyProperties.Union(computedProperties)).ToList();
 
             var adapter = GetFormatter(connection);
+            string parameterPrefix = GetParameterPrefixQuery();
 
             for (var i = 0; i < nonIdProps.Count; i++)
             {
                 var property = nonIdProps[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, property.Name, parameterPrefix);
                 if (i < nonIdProps.Count - 1)
                     sb.Append(", ");
             }
@@ -260,7 +262,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < keyProperties.Count; i++)
             {
                 var property = keyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, property.Name, parameterPrefix);
                 if (i < keyProperties.Count - 1)
                     sb.Append(" and ");
             }
@@ -313,11 +315,12 @@ namespace Dapper.Contrib.Extensions
             sb.AppendFormat("DELETE FROM {0} WHERE ", name);
 
             var adapter = GetFormatter(connection);
+            string parameterPrefix = GetParameterPrefixQuery();
 
             for (var i = 0; i < allKeyProperties.Count; i++)
             {
                 var property = allKeyProperties[i];
-                adapter.AppendColumnNameEqualsValue(sb, property.Name);
+                adapter.AppendColumnNameEqualsValue(sb, property.Name, parameterPrefix);
                 if (i < allKeyProperties.Count - 1)
                     sb.Append(" AND ");
             }
