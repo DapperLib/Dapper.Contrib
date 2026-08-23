@@ -165,7 +165,50 @@ namespace Dapper.Tests.Contrib
                 await connection.DeleteAsync(user).ConfigureAwait(false);
             }
         }
+        
+        [Fact]
+        public async Task InsertGetUpdateOnlyAsync()
+        {
+            using (var connection = GetOpenConnection())
+            {
+                Assert.Null(await connection.GetAsync<User>(30).ConfigureAwait(false));
 
+                var originalCount = (await connection.QueryAsync<int>("select Count(*) from Users").ConfigureAwait(false)).First();
+
+                var id = await connection.InsertAsync(new User { Name = "Adam", Age = 10 }).ConfigureAwait(false);
+
+                //get a user with "isdirty" tracking
+                var user = await connection.GetAsync<IUser>(id).ConfigureAwait(false);
+                Assert.Equal("Adam", user.Name);
+                Assert.False(await connection.UpdateAsync(user).ConfigureAwait(false)); //returns false if not updated, based on tracking
+                user.Name = "Bob";
+                Assert.True(await connection.UpdateAsync(user).ConfigureAwait(false)); //returns true if updated, based on tracking
+                user.Name = "Dave";
+                user.Age = 43;
+                Assert.True(await connection.UpdateOnlyAsync(user, includedFields: x => x.Age).ConfigureAwait(false)); //returns true if updated, based on tracking
+                user = await connection.GetAsync<IUser>(id).ConfigureAwait(false);
+                Assert.Equal("Bob", user.Name); // Name isn't updated
+                Assert.Equal(43, user.Age);     // Age is updated
+
+                //get a user with no tracking
+                var notrackedUser = await connection.GetAsync<User>(id).ConfigureAwait(false);
+                Assert.Equal("Bob", notrackedUser.Name);
+                Assert.True(await connection.UpdateAsync(notrackedUser).ConfigureAwait(false));
+                //returns true, even though user was not changed
+                notrackedUser.Name = "Cecil";
+                Assert.True(await connection.UpdateAsync(notrackedUser).ConfigureAwait(false));
+                Assert.Equal("Cecil", (await connection.GetAsync<User>(id).ConfigureAwait(false)).Name);
+
+                Assert.Equal((await connection.QueryAsync<User>("select * from Users").ConfigureAwait(false)).Count(), originalCount + 1);
+                Assert.True(await connection.DeleteAsync(user).ConfigureAwait(false));
+                Assert.Equal((await connection.QueryAsync<User>("select * from Users").ConfigureAwait(false)).Count(), originalCount);
+
+                Assert.False(await connection.UpdateAsync(notrackedUser).ConfigureAwait(false)); //returns false, user not found
+
+                Assert.True(await connection.InsertAsync(new User { Name = "Adam", Age = 10 }).ConfigureAwait(false) > originalCount + 1);
+            }
+        }
+        
         [Fact]
         public async Task InsertGetUpdateAsync()
         {
