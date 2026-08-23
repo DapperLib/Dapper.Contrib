@@ -317,7 +317,7 @@ namespace Dapper.Contrib.Extensions
         /// <param name="transaction">The transaction to run under, null (the default) if none</param>
         /// <param name="commandTimeout">Number of seconds before command execution timeout</param>
         /// <returns>Identity of inserted entity, or number of inserted rows if inserting a list</returns>
-        public static long Insert<T>(this IDbConnection connection, T entityToInsert, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
+        public static long Insert<T>(this IDbConnection connection, T entityToInsert, IDbTransaction transaction = null, int? commandTimeout = null, IColumnNameFormatter columnNameFormatter = null) where T : class
         {
             var isList = false;
 
@@ -354,7 +354,7 @@ namespace Dapper.Contrib.Extensions
             for (var i = 0; i < allPropertiesExceptKeyAndComputed.Count; i++)
             {
                 var property = allPropertiesExceptKeyAndComputed[i];
-                adapter.AppendColumnName(sbColumnList, property.Name);  //fix for issue #336
+                adapter.AppendColumnName(sbColumnList, columnNameFormatter == null ? property.Name : columnNameFormatter.Format(property.Name));  //fix for issue #336
                 if (i < allPropertiesExceptKeyAndComputed.Count - 1)
                     sbColumnList.Append(", ");
             }
