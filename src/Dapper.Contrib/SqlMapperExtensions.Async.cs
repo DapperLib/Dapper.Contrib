@@ -25,13 +25,22 @@ namespace Dapper.Contrib.Extensions
         public static async Task<T> GetAsync<T>(this IDbConnection connection, dynamic id, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             var type = typeof(T);
-            if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
+
+            // get query caching depends on connection specific formatting
+            var typeTuple = Tuple.Create(connection.GetType().TypeHandle, type.TypeHandle);
+            
+            if (!GetQueries.TryGetValue(typeTuple, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(GetAsync));
                 var name = GetTableName(type);
 
-                sql = $"SELECT * FROM {name} WHERE {key.Name} = @id";
-                GetQueries[type.TypeHandle] = sql;
+                var adapter = GetFormatter(connection);
+
+                var sbGetQuery = new StringBuilder($"SELECT * FROM {name} WHERE ");
+                adapter.AppendColumnName(sbGetQuery, key.Name);
+                sbGetQuery.Append(" = @id");
+                sql = sbGetQuery.ToString();
+                GetQueries[typeTuple] = sql;
             }
 
             var dynParams = new DynamicParameters();
@@ -83,13 +92,13 @@ namespace Dapper.Contrib.Extensions
             var type = typeof(T);
             var cacheType = typeof(List<T>);
 
-            if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
+            if (!GetAllQueries.TryGetValue(cacheType.TypeHandle, out string sql))
             {
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
                 sql = "SELECT * FROM " + name;
-                GetQueries[cacheType.TypeHandle] = sql;
+                GetAllQueries[cacheType.TypeHandle] = sql;
             }
 
             if (!type.IsInterface)
