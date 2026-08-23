@@ -41,7 +41,7 @@ namespace Dapper.Tests.Contrib
                 dropTable("Users");
                 connection.Execute("CREATE TABLE Users (Id int IDENTITY(1,1) not null, Name nvarchar(100) not null, Age int not null);");
                 dropTable("Automobiles");
-                connection.Execute("CREATE TABLE Automobiles (Id int IDENTITY(1,1) not null, Name nvarchar(100) not null);");
+                connection.Execute("CREATE TABLE Automobiles (Id int IDENTITY(1,1) not null, Name nvarchar(100) not null, Computed AS Concat('[',Name,']'));");
                 dropTable("Results");
                 connection.Execute("CREATE TABLE Results (Id int IDENTITY(1,1) not null, Name nvarchar(100) not null, [Order] int not null);");
                 dropTable("ObjectX");
@@ -61,7 +61,7 @@ namespace Dapper.Tests.Contrib
     public class MySqlServerTestSuite : TestSuite
     {
         public static string ConnectionString { get; } =
-            GetConnectionString("MySqlConnectionString", "Server=localhost;Database=tests;Uid=test;Pwd=pass;UseAffectedRows=false;");
+            GetConnectionString("MySqlConnectionString", "Server=localhost;Database=test;Uid=root;Pwd=root;UseAffectedRows=false;");
 
         public override IDbConnection GetConnection()
         {
@@ -87,7 +87,7 @@ namespace Dapper.Tests.Contrib
                     dropTable("Users");
                     connection.Execute("CREATE TABLE Users (Id int not null AUTO_INCREMENT PRIMARY KEY, Name nvarchar(100) not null, Age int not null);");
                     dropTable("Automobiles");
-                    connection.Execute("CREATE TABLE Automobiles (Id int not null AUTO_INCREMENT PRIMARY KEY, Name nvarchar(100) not null);");
+                    connection.Execute("CREATE TABLE Automobiles (Id int not null AUTO_INCREMENT PRIMARY KEY, Name nvarchar(100) not null, Computed nvarchar(150) GENERATED ALWAYS AS (Concat('[',Name,']')));");
                     dropTable("Results");
                     connection.Execute("CREATE TABLE Results (Id int not null AUTO_INCREMENT PRIMARY KEY, Name nvarchar(100) not null, `Order` int not null);");
                     dropTable("ObjectX");
@@ -130,7 +130,7 @@ namespace Dapper.Tests.Contrib
                 connection.Execute("CREATE TABLE Stuff (TheId integer primary key autoincrement not null, Name nvarchar(100) not null, Created DateTime null) ");
                 connection.Execute("CREATE TABLE People (Id integer primary key autoincrement not null, Name nvarchar(100) not null) ");
                 connection.Execute("CREATE TABLE Users (Id integer primary key autoincrement not null, Name nvarchar(100) not null, Age int not null) ");
-                connection.Execute("CREATE TABLE Automobiles (Id integer primary key autoincrement not null, Name nvarchar(100) not null) ");
+                connection.Execute("CREATE TABLE Automobiles (Id integer primary key autoincrement not null, Name nvarchar(100) not null, Computed nvarchar(150) GENERATED ALWAYS AS ('[' || Name || ']')) ");
                 connection.Execute("CREATE TABLE Results (Id integer primary key autoincrement not null, Name nvarchar(100) not null, [Order] int not null) ");
                 connection.Execute("CREATE TABLE ObjectX (ObjectXId nvarchar(100) not null, Name nvarchar(100) not null) ");
                 connection.Execute("CREATE TABLE ObjectY (ObjectYId integer not null, Name nvarchar(100) not null) ");
