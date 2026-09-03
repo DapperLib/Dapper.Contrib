@@ -1,17 +1,16 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Collections.Concurrent;
 using System.Reflection.Emit;
-using System.Threading;
-
+using System.Text;
 using Dapper;
 
 namespace Dapper.Contrib.Extensions
 {
+
     /// <summary>
     /// The Dapper.Contrib extensions for Dapper
     /// </summary>
@@ -187,7 +186,7 @@ namespace Dapper.Contrib.Extensions
 
             if (type.IsInterface)
             {
-                if (!(connection.Query(sql, dynParams).FirstOrDefault() is IDictionary<string, object> res))
+                if (connection.Query(sql, dynParams).FirstOrDefault() is not IDictionary<string, object> res)
                 {
                     return null;
                 }
@@ -292,6 +291,13 @@ namespace Dapper.Contrib.Extensions
                     type.GetCustomAttribute<TableAttribute>(false)?.Name
                     ?? (type.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic)?.Name;
 
+                var tableAttrSchema = type.GetCustomAttribute<TableAttribute>(false)?.Schema;
+
+                if (!string.IsNullOrEmpty(tableAttrSchema))
+                {
+                    tableAttrName = $"{tableAttrSchema}.{tableAttrName}";
+                }
+
                 if (tableAttrName != null)
                 {
                     name = tableAttrName;
@@ -299,7 +305,7 @@ namespace Dapper.Contrib.Extensions
                 else
                 {
                     name = type.Name + "s";
-                    if (type.IsInterface && name.StartsWith("I"))
+                    if (type.IsInterface && name.StartsWith('I'))
                         name = name.Substring(1);
                 }
             }
@@ -601,7 +607,7 @@ namespace Dapper.Contrib.Extensions
                 return (T)Activator.CreateInstance(generatedType);
             }
 
-            private static MethodInfo CreateIsDirtyProperty(TypeBuilder typeBuilder)
+            private static MethodBuilder CreateIsDirtyProperty(TypeBuilder typeBuilder)
             {
                 var propType = typeof(bool);
                 var field = typeBuilder.DefineField("_" + nameof(IProxy.IsDirty), propType, FieldAttributes.Private);
@@ -642,7 +648,7 @@ namespace Dapper.Contrib.Extensions
                 return currSetPropMthdBldr;
             }
 
-            private static void CreateProperty<T>(TypeBuilder typeBuilder, string propertyName, Type propType, MethodInfo setIsDirtyMethod, bool isIdentity)
+            private static void CreateProperty<T>(TypeBuilder typeBuilder, string propertyName, Type propType, MethodBuilder setIsDirtyMethod, bool isIdentity)
             {
                 //Define the field and the property 
                 var field = typeBuilder.DefineField("_" + propertyName, propType, FieldAttributes.Private);
@@ -710,15 +716,22 @@ namespace Dapper.Contrib.Extensions
         /// Creates a table mapping to a specific name for Dapper.Contrib commands
         /// </summary>
         /// <param name="tableName">The name of this table in the database.</param>
-        public TableAttribute(string tableName)
+        /// <param name="schema">The schema name of this table in the database</param>
+        public TableAttribute(string tableName, string schema = "")
         {
             Name = tableName;
+            Schema = schema;
         }
 
         /// <summary>
         /// The name of the table in the database
         /// </summary>
         public string Name { get; set; }
+
+        /// <summary>
+        /// The schema of the table in the database
+        /// </summary>
+        public string Schema { get; set; }
     }
 
     /// <summary>

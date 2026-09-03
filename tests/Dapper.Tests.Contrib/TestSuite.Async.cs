@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading.Tasks;
 
 using Dapper.Contrib.Extensions;
-using FactAttribute = Dapper.Tests.Contrib.SkippableFactAttribute;
 using Xunit;
 
 namespace Dapper.Tests.Contrib
@@ -125,7 +124,7 @@ namespace Dapper.Tests.Contrib
                 var list2 = (await connection.QueryAsync<ObjectY>("select * from ObjectY").ConfigureAwait(false)).ToList();
                 Assert.Equal(list2.Count, originalyCount + 1);
                 o2 = await connection.GetAsync<ObjectY>(id).ConfigureAwait(false);
-                Assert.Equal(o2.ObjectYId, id);
+                Assert.Equal(id, o2.ObjectYId);
                 o2.Name = "Bar";
                 await connection.UpdateAsync(o2).ConfigureAwait(false);
                 o2 = await connection.GetAsync<ObjectY>(id).ConfigureAwait(false);
@@ -305,9 +304,9 @@ namespace Dapper.Tests.Contrib
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
                 var total = await connection.InsertAsync(helper(users)).ConfigureAwait(false);
-                Assert.Equal(total, numberOfEntities);
+                Assert.Equal(numberOfEntities, total);
                 users = connection.Query<User>("select * from Users").ToList();
-                Assert.Equal(users.Count, numberOfEntities);
+                Assert.Equal(numberOfEntities, users.Count);
             }
         }
 
@@ -343,9 +342,9 @@ namespace Dapper.Tests.Contrib
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
                 var total = await connection.InsertAsync(helper(users)).ConfigureAwait(false);
-                Assert.Equal(total, numberOfEntities);
+                Assert.Equal(numberOfEntities, total);
                 users = connection.Query<User>("select * from Users").ToList();
-                Assert.Equal(users.Count, numberOfEntities);
+                Assert.Equal(numberOfEntities, users.Count);
                 foreach (var user in users)
                 {
                     user.Name += " updated";
@@ -377,7 +376,7 @@ namespace Dapper.Tests.Contrib
         private async Task DeleteHelperAsync<T>(Func<IEnumerable<User>, T> helper)
             where T : class
         {
-            const int numberOfEntities = 10;
+            int numberOfEntities = 10;
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
@@ -388,14 +387,14 @@ namespace Dapper.Tests.Contrib
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
                 var total = await connection.InsertAsync(helper(users)).ConfigureAwait(false);
-                Assert.Equal(total, numberOfEntities);
+                Assert.Equal(numberOfEntities, total);
                 users = connection.Query<User>("select * from Users").ToList();
-                Assert.Equal(users.Count, numberOfEntities);
+                Assert.Equal(numberOfEntities, users.Count);
 
                 var usersToDelete = users.Take(10).ToList();
                 await connection.DeleteAsync(helper(usersToDelete)).ConfigureAwait(false);
                 users = connection.Query<User>("select * from Users").ToList();
-                Assert.Equal(users.Count, numberOfEntities - 10);
+                Assert.Equal(numberOfEntities - 10, users.Count);
             }
         }
 
@@ -413,11 +412,11 @@ namespace Dapper.Tests.Contrib
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
                 var total = await connection.InsertAsync(users).ConfigureAwait(false);
-                Assert.Equal(total, numberOfEntities);
+                Assert.Equal(numberOfEntities, total);
                 users = (List<User>)await connection.GetAllAsync<User>().ConfigureAwait(false);
-                Assert.Equal(users.Count, numberOfEntities);
+                Assert.Equal(numberOfEntities, users.Count);
                 var iusers = await connection.GetAllAsync<IUser>().ConfigureAwait(false);
-                Assert.Equal(iusers.ToList().Count, numberOfEntities);
+                Assert.Equal(numberOfEntities, iusers.ToList().Count);
             }
         }
 
@@ -436,12 +435,12 @@ namespace Dapper.Tests.Contrib
                 Assert.Equal(new DateTime(2011, 07, 14), value1.DateValue.Value);
 
                 var value2 = await connection.GetAsync<INullableDate>(id2).ConfigureAwait(false);
-                Assert.True(value2.DateValue == null);
+                Assert.Null(value2.DateValue);
 
                 var value3 = await connection.GetAllAsync<INullableDate>().ConfigureAwait(false);
                 var valuesList = value3.ToList();
                 Assert.Equal(new DateTime(2011, 07, 14), valuesList[0].DateValue.Value);
-                Assert.True(valuesList[1].DateValue == null);
+                Assert.Null(valuesList[1].DateValue);
             }
         }
 

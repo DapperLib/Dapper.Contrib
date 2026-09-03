@@ -1,8 +1,8 @@
-﻿using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using MySqlConnector;
 using System;
 using System.Data;
-using System.Data.SqlClient;
 using System.IO;
 using Xunit;
 using Xunit.Sdk;

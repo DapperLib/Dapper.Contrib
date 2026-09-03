@@ -133,10 +133,10 @@ Special Attributes
 ----------
 Dapper.Contrib makes use of some optional attributes:
 
-* `[Table("Tablename")]` - use another table name instead of the (by default pluralized) name of the class
+* `[Table("Tablename", Schema = "SchemaName")]` - use another table name instead of the (by default pluralized) name of the class, Schema can be optionally passed as well.
 
     ```csharp
-    [Table ("emps")]
+    [Table ("emps", Schema = "emp")]
     public class Employee
     {
         public int Id { get; set; }
