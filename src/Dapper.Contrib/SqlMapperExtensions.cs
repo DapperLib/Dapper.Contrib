@@ -42,6 +42,33 @@ namespace Dapper.Contrib.Extensions
         }
 
         /// <summary>
+        /// Key used for the Get Query cache. A query is deterministic for a type and a
+        /// <see cref="DefaultTypeMap.MatchNamesWithUnderscores"/> naming convention.
+        /// </summary>
+        public struct GetQueryCacheKey {
+            /// <summary>
+            /// Initialise a Cache Key
+            /// </summary>
+            /// <param name="typeHandle">The Type handle of the returned object</param>
+            /// <param name="isUnderscore">The naming convention used</param>
+            public GetQueryCacheKey(RuntimeTypeHandle typeHandle, bool isUnderscore)
+            {
+                TypeHandle = typeHandle;
+                IsUnderscore = isUnderscore;
+            }
+
+            /// <summary>
+            /// The Type handle of the returned object
+            /// </summary>
+            public RuntimeTypeHandle TypeHandle { get; }
+
+            /// <summary>
+            /// The naming convention used
+            /// </summary>
+            public bool IsUnderscore { get; }
+        };
+
+        /// <summary>
         /// The function to get a database type from the given <see cref="IDbConnection"/>.
         /// </summary>
         /// <param name="connection">The connection to get a database type name from.</param>
@@ -56,8 +83,8 @@ namespace Dapper.Contrib.Extensions
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ExplicitKeyProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> TypeProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
         private static readonly ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>> ComputedProperties = new ConcurrentDictionary<RuntimeTypeHandle, IEnumerable<PropertyInfo>>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> GetQueries = new ConcurrentDictionary<RuntimeTypeHandle, string>();
-        private static readonly ConcurrentDictionary<RuntimeTypeHandle, string> TypeTableName = new ConcurrentDictionary<RuntimeTypeHandle, string>();
+        private static readonly ConcurrentDictionary<GetQueryCacheKey, string> GetQueries = new ConcurrentDictionary<GetQueryCacheKey, string>();
+        private static readonly ConcurrentDictionary<GetQueryCacheKey, string> TypeTableName = new ConcurrentDictionary<GetQueryCacheKey, string>();
 
         private static readonly ISqlAdapter DefaultAdapter = new SqlServerAdapter();
         private static readonly Dictionary<string, ISqlAdapter> AdapterDictionary
@@ -171,13 +198,14 @@ namespace Dapper.Contrib.Extensions
         {
             var type = typeof(T);
 
-            if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
+            var keyType = new GetQueryCacheKey(type.TypeHandle, DefaultTypeMap.MatchNamesWithUnderscores);
+            if (!GetQueries.TryGetValue(keyType, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(Get));
                 var name = GetTableName(type);
 
-                sql = $"select * from {name} where {key.Name} = @id";
-                GetQueries[type.TypeHandle] = sql;
+                sql = $"select * from {name} where {ColumnMapping.ColumnName(key.Name)} = @id";
+                GetQueries[keyType] = sql;
             }
 
             var dynParams = new DynamicParameters();
@@ -196,7 +224,7 @@ namespace Dapper.Contrib.Extensions
 
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var val = res[property.Name];
+                    var val = res[ColumnMapping.ColumnName(property.Name)];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -234,13 +262,15 @@ namespace Dapper.Contrib.Extensions
             var type = typeof(T);
             var cacheType = typeof(List<T>);
 
-            if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
+            var keyType = new GetQueryCacheKey(cacheType.TypeHandle, DefaultTypeMap.MatchNamesWithUnderscores);
+
+            if (!GetQueries.TryGetValue(keyType, out string sql))
             {
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
                 sql = "select * from " + name;
-                GetQueries[cacheType.TypeHandle] = sql;
+                GetQueries[keyType] = sql;
             }
 
             if (!type.IsInterface) return connection.Query<T>(sql, null, transaction, commandTimeout: commandTimeout);
@@ -252,7 +282,7 @@ namespace Dapper.Contrib.Extensions
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var val = res[property.Name];
+                    var val = res[ColumnMapping.ColumnName(property.Name)];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
@@ -279,7 +309,9 @@ namespace Dapper.Contrib.Extensions
 
         private static string GetTableName(Type type)
         {
-            if (TypeTableName.TryGetValue(type.TypeHandle, out string name)) return name;
+            var keyType = new GetQueryCacheKey(type.TypeHandle, DefaultTypeMap.MatchNamesWithUnderscores);
+
+            if (TypeTableName.TryGetValue(keyType, out string name)) return name;
 
             if (TableNameMapper != null)
             {
@@ -304,7 +336,7 @@ namespace Dapper.Contrib.Extensions
                 }
             }
 
-            TypeTableName[type.TypeHandle] = name;
+            TypeTableName[keyType] = name;
             return name;
         }
 
@@ -791,14 +823,14 @@ public partial interface ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    void AppendColumnName(StringBuilder sb, string columnName);
+    /// <param name="propertyName">The property name.</param>
+    void AppendColumnName(StringBuilder sb, string propertyName);
     /// <summary>
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    void AppendColumnNameEqualsValue(StringBuilder sb, string columnName);
+    /// <param name="propertyName">The column name.</param>
+    void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName);
 }
 
 /// <summary>
@@ -840,9 +872,10 @@ public partial class SqlServerAdapter : ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnName(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnName(StringBuilder sb, string propertyName)
     {
+        var columnName = ColumnMapping.ColumnName(propertyName);
         sb.AppendFormat("[{0}]", columnName);
     }
 
@@ -850,10 +883,11 @@ public partial class SqlServerAdapter : ISqlAdapter
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName)
     {
-        sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
+        var columnName = ColumnMapping.ColumnName(propertyName);
+        sb.AppendFormat("[{0}] = @{1}", columnName, propertyName);
     }
 }
 
@@ -896,9 +930,10 @@ public partial class SqlCeServerAdapter : ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnName(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnName(StringBuilder sb, string propertyName)
     {
+        var columnName = ColumnMapping.ColumnName(propertyName);
         sb.AppendFormat("[{0}]", columnName);
     }
 
@@ -906,10 +941,11 @@ public partial class SqlCeServerAdapter : ISqlAdapter
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName)
     {
-        sb.AppendFormat("[{0}] = @{1}", columnName, columnName);
+        var columnName = ColumnMapping.ColumnName(propertyName);
+        sb.AppendFormat("[{0}] = @{1}", columnName, propertyName);
     }
 }
 
@@ -951,9 +987,10 @@ public partial class MySqlAdapter : ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnName(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnName(StringBuilder sb, string propertyName)
     {
+        var columnName = ColumnMapping.ColumnName(propertyName);
         sb.AppendFormat("`{0}`", columnName);
     }
 
@@ -961,10 +998,11 @@ public partial class MySqlAdapter : ISqlAdapter
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName)
     {
-        sb.AppendFormat("`{0}` = @{1}", columnName, columnName);
+        var columnName = ColumnMapping.ColumnName(propertyName);
+        sb.AppendFormat("`{0}` = @{1}", columnName, propertyName);
     }
 }
 
@@ -1027,9 +1065,10 @@ public partial class PostgresAdapter : ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnName(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnName(StringBuilder sb, string propertyName)
     {
+        var columnName = ColumnMapping.ColumnName(propertyName);
         sb.AppendFormat("\"{0}\"", columnName);
     }
 
@@ -1037,10 +1076,11 @@ public partial class PostgresAdapter : ISqlAdapter
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName)
     {
-        sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+        var columnName = ColumnMapping.ColumnName(propertyName);
+        sb.AppendFormat("\"{0}\" = @{1}", columnName, propertyName);
     }
 }
 
@@ -1080,9 +1120,10 @@ public partial class SQLiteAdapter : ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnName(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnName(StringBuilder sb, string propertyName)
     {
+        var columnName = ColumnMapping.ColumnName(propertyName);
         sb.AppendFormat("\"{0}\"", columnName);
     }
 
@@ -1090,10 +1131,11 @@ public partial class SQLiteAdapter : ISqlAdapter
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName)
     {
-        sb.AppendFormat("\"{0}\" = @{1}", columnName, columnName);
+        var columnName = ColumnMapping.ColumnName(propertyName);
+        sb.AppendFormat("\"{0}\" = @{1}", columnName, propertyName);
     }
 }
 
@@ -1137,9 +1179,10 @@ public partial class FbAdapter : ISqlAdapter
     /// Adds the name of a column.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnName(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnName(StringBuilder sb, string propertyName)
     {
+        var columnName = ColumnMapping.ColumnName(propertyName);
         sb.AppendFormat("{0}", columnName);
     }
 
@@ -1147,9 +1190,48 @@ public partial class FbAdapter : ISqlAdapter
     /// Adds a column equality to a parameter.
     /// </summary>
     /// <param name="sb">The string builder  to append to.</param>
-    /// <param name="columnName">The column name.</param>
-    public void AppendColumnNameEqualsValue(StringBuilder sb, string columnName)
+    /// <param name="propertyName">The property name.</param>
+    public void AppendColumnNameEqualsValue(StringBuilder sb, string propertyName)
     {
-        sb.AppendFormat("{0} = @{1}", columnName, columnName);
+        var columnName = ColumnMapping.ColumnName(propertyName);
+        sb.AppendFormat("{0} = @{1}", columnName, propertyName);
+    }
+}
+
+/// <summary>
+/// Utilities for mapping property names to column names
+/// </summary>
+public static class ColumnMapping
+{
+    /// <summary>
+    /// Converts the property name to a column name, 
+    /// respecting the <see cref="DefaultTypeMap.MatchNamesWithUnderscores"/> setting
+    /// </summary>
+    /// <param name="propertyName">The property name to evaluate</param>
+    /// <returns>The corresponding column name.</returns>
+    /// <remarks>
+    /// Underscore Handling was introduced in https://github.com/DapperLib/Dapper/commit/33090c0218383411c3b25fa6cb4cbee38d0f3270
+    /// </remarks>
+    public static string ColumnName(string propertyName)
+    {
+        return DefaultTypeMap.MatchNamesWithUnderscores
+            ? PascalCaseToSnakeCase(propertyName)
+            : propertyName;
+    }
+
+    /// <summary>
+    /// Converts PascalCase to Snake_Case
+    /// </summary>
+    /// <param name="pascalCaseString">Text to be transformed</param>
+    /// <returns>The Snake_Cased string</returns>
+    /// <remarks>
+    /// Because Dapper itself only uses property-column mappings for data reads,
+    /// it only needed to strip underscores from column names; it did not have to
+    /// decide on a casing convention for column names.
+    /// Typically underscores are used with lower case text.
+    /// </remarks>
+    public static string PascalCaseToSnakeCase(string pascalCaseString) {
+        return string.Concat(pascalCaseString.Select((character, index)
+             => index > 0 && char.IsUpper(character) ? "_" + character.ToString() : character.ToString())).ToLower();
     }
 }

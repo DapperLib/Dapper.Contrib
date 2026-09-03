@@ -158,10 +158,10 @@ namespace Dapper.Tests.Contrib
         {
             using (var connection = GetOpenConnection())
             {
-                var id = await connection.InsertAsync(new User { Name = "Adama", Age = 10 }).ConfigureAwait(false);
+                var id = await connection.InsertAsync(new User { UserName = "Adama", Age = 10 }).ConfigureAwait(false);
                 var user = await connection.GetAsync<User>(id).ConfigureAwait(false);
                 Assert.Equal(id, user.Id);
-                Assert.Equal("Adama", user.Name);
+                Assert.Equal("Adama", user.UserName);
                 await connection.DeleteAsync(user).ConfigureAwait(false);
             }
         }
@@ -175,25 +175,25 @@ namespace Dapper.Tests.Contrib
 
                 var originalCount = (await connection.QueryAsync<int>("select Count(*) from Users").ConfigureAwait(false)).First();
 
-                var id = await connection.InsertAsync(new User { Name = "Adam", Age = 10 }).ConfigureAwait(false);
+                var id = await connection.InsertAsync(new User { UserName = "Adam", Age = 10 }).ConfigureAwait(false);
 
                 //get a user with "isdirty" tracking
                 var user = await connection.GetAsync<IUser>(id).ConfigureAwait(false);
-                Assert.Equal("Adam", user.Name);
+                Assert.Equal("Adam", user.UserName);
                 Assert.False(await connection.UpdateAsync(user).ConfigureAwait(false)); //returns false if not updated, based on tracking
-                user.Name = "Bob";
+                user.UserName = "Bob";
                 Assert.True(await connection.UpdateAsync(user).ConfigureAwait(false)); //returns true if updated, based on tracking
                 user = await connection.GetAsync<IUser>(id).ConfigureAwait(false);
-                Assert.Equal("Bob", user.Name);
+                Assert.Equal("Bob", user.UserName);
 
                 //get a user with no tracking
                 var notrackedUser = await connection.GetAsync<User>(id).ConfigureAwait(false);
-                Assert.Equal("Bob", notrackedUser.Name);
+                Assert.Equal("Bob", notrackedUser.UserName);
                 Assert.True(await connection.UpdateAsync(notrackedUser).ConfigureAwait(false));
                 //returns true, even though user was not changed
-                notrackedUser.Name = "Cecil";
+                notrackedUser.UserName = "Cecil";
                 Assert.True(await connection.UpdateAsync(notrackedUser).ConfigureAwait(false));
-                Assert.Equal("Cecil", (await connection.GetAsync<User>(id).ConfigureAwait(false)).Name);
+                Assert.Equal("Cecil", (await connection.GetAsync<User>(id).ConfigureAwait(false)).UserName);
 
                 Assert.Equal((await connection.QueryAsync<User>("select * from Users").ConfigureAwait(false)).Count(), originalCount + 1);
                 Assert.True(await connection.DeleteAsync(user).ConfigureAwait(false));
@@ -201,7 +201,7 @@ namespace Dapper.Tests.Contrib
 
                 Assert.False(await connection.UpdateAsync(notrackedUser).ConfigureAwait(false)); //returns false, user not found
 
-                Assert.True(await connection.InsertAsync(new User { Name = "Adam", Age = 10 }).ConfigureAwait(false) > originalCount + 1);
+                Assert.True(await connection.InsertAsync(new User { UserName = "Adam", Age = 10 }).ConfigureAwait(false) > originalCount + 1);
             }
         }
 
@@ -213,7 +213,7 @@ namespace Dapper.Tests.Contrib
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
                 Assert.Null(await connection.GetAsync<IUser>(3).ConfigureAwait(false));
-                var user = new User { Name = "Adamb", Age = 10 };
+                var user = new User { UserName = "Adamb", Age = 10 };
                 var id = await connection.InsertAsync(user).ConfigureAwait(false);
                 Assert.Equal(user.Id, id);
             }
@@ -230,14 +230,15 @@ namespace Dapper.Tests.Contrib
                 var data = new List<User>(100);
                 for (var i = 0; i < 100; i++)
                 {
-                    var nU = new User { Age = rand.Next(70), Id = i, Name = Guid.NewGuid().ToString() };
+                    var nU = new User { Age = rand.Next(70), Id = i, UserName = Guid.NewGuid().ToString() };
                     data.Add(nU);
                     nU.Id = await connection.InsertAsync(nU).ConfigureAwait(false);
                 }
 
                 var builder = new SqlBuilder();
                 var justId = builder.AddTemplate("SELECT /**select**/ FROM Users");
-                var all = builder.AddTemplate("SELECT Name, /**select**/, Age FROM Users");
+                var isUnderscored = DefaultTypeMap.MatchNamesWithUnderscores;
+                var all = builder.AddTemplate($"SELECT User{(isUnderscored ? "_" : "")}Name, /**select**/, Age FROM Users");
 
                 builder.Select("Id");
 
@@ -247,7 +248,7 @@ namespace Dapper.Tests.Contrib
                 foreach (var u in data)
                 {
                     if (!ids.Any(i => u.Id == i)) throw new Exception("Missing ids in select");
-                    if (!users.Any(a => a.Id == u.Id && a.Name == u.Name && a.Age == u.Age))
+                    if (!users.Any(a => a.Id == u.Id && a.UserName == u.UserName && a.Age == u.Age))
                         throw new Exception("Missing users in select");
                 }
             }
@@ -266,7 +267,7 @@ namespace Dapper.Tests.Contrib
             {
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
-                await connection.InsertAsync(new User { Age = 5, Name = "Testy McTestington" }).ConfigureAwait(false);
+                await connection.InsertAsync(new User { Age = 5, UserName = "Testy McTestington" }).ConfigureAwait(false);
 
                 if ((await connection.QueryAsync<int>(template.RawSql, template.Parameters).ConfigureAwait(false)).Single() != 1)
                     throw new Exception("Query failed");
@@ -298,7 +299,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -336,7 +337,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -348,10 +349,10 @@ namespace Dapper.Tests.Contrib
                 Assert.Equal(users.Count, numberOfEntities);
                 foreach (var user in users)
                 {
-                    user.Name += " updated";
+                    user.UserName += " updated";
                 }
                 await connection.UpdateAsync(helper(users)).ConfigureAwait(false);
-                var name = connection.Query<User>("select * from Users").First().Name;
+                var name = connection.Query<User>("select * from Users").First().UserName;
                 Assert.Contains("updated", name);
             }
         }
@@ -381,7 +382,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -406,7 +407,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -465,8 +466,8 @@ namespace Dapper.Tests.Contrib
             {
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
 
-                var id1 = await connection.InsertAsync(new User { Name = "Alice", Age = 32 }).ConfigureAwait(false);
-                var id2 = await connection.InsertAsync(new User { Name = "Bob", Age = 33 }).ConfigureAwait(false);
+                var id1 = await connection.InsertAsync(new User { UserName = "Alice", Age = 32 }).ConfigureAwait(false);
+                var id2 = await connection.InsertAsync(new User { UserName = "Bob", Age = 33 }).ConfigureAwait(false);
                 await connection.DeleteAllAsync<User>().ConfigureAwait(false);
                 Assert.Null(await connection.GetAsync<User>(id1).ConfigureAwait(false));
                 Assert.Null(await connection.GetAsync<User>(id2).ConfigureAwait(false));

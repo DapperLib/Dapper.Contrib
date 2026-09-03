@@ -37,14 +37,14 @@ namespace Dapper.Tests.Contrib
     {
         [Key]
         int Id { get; set; }
-        string Name { get; set; }
+        string UserName { get; set; }
         int Age { get; set; }
     }
 
     public class User : IUser
     {
         public int Id { get; set; }
-        public string Name { get; set; }
+        public string UserName { get; set; }
         public int Age { get; set; }
     }
 
@@ -73,7 +73,7 @@ namespace Dapper.Tests.Contrib
         [Key]
         public short TheId { get; set; }
         public string Name { get; set; }
-        public DateTime? Created { get; set; }
+        public DateTime? CreatedAt { get; set; }
     }
 
     [Table("Automobiles")]
@@ -308,10 +308,10 @@ namespace Dapper.Tests.Contrib
             using (var connection = GetOpenConnection())
             {
                 connection.Insert(new Stuff { Name = "First item" });
-                connection.Insert(new Stuff { Name = "Second item", Created = DateTime.Now });
+                connection.Insert(new Stuff { Name = "Second item", CreatedAt = DateTime.Now });
                 var stuff = connection.Query<Stuff>("select * from Stuff").ToList();
-                Assert.Null(stuff[0].Created);
-                Assert.NotNull(stuff.Last().Created);
+                Assert.Null(stuff[0].CreatedAt);
+                Assert.NotNull(stuff.Last().CreatedAt);
             }
         }
 
@@ -338,10 +338,10 @@ namespace Dapper.Tests.Contrib
         {
             using (var connection = GetOpenConnection())
             {
-                var id = connection.Insert(new User { Name = "Adama", Age = 10 });
+                var id = connection.Insert(new User { UserName = "Adama", Age = 10 });
                 var user = connection.Get<User>(id);
                 Assert.Equal(user.Id, (int)id);
-                Assert.Equal("Adama", user.Name);
+                Assert.Equal("Adama", user.UserName);
                 connection.Delete(user);
             }
         }
@@ -351,7 +351,7 @@ namespace Dapper.Tests.Contrib
         {
             using (var connection = GetConnection())
             {
-                Assert.True(connection.Insert(new User { Name = "Adama", Age = 10 }) > 0);
+                Assert.True(connection.Insert(new User { UserName = "Adama", Age = 10 }) > 0);
                 var users = connection.GetAll<User>();
                 Assert.NotEmpty(users);
             }
@@ -382,7 +382,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -420,7 +420,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -432,10 +432,10 @@ namespace Dapper.Tests.Contrib
                 Assert.Equal(users.Count, numberOfEntities);
                 foreach (var user in users)
                 {
-                    user.Name += " updated";
+                    user.UserName += " updated";
                 }
                 connection.Update(helper(users));
-                var name = connection.Query<User>("select * from Users").First().Name;
+                var name = connection.Query<User>("select * from Users").First().UserName;
                 Assert.Contains("updated", name);
             }
         }
@@ -465,7 +465,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -494,24 +494,24 @@ namespace Dapper.Tests.Contrib
                 //insert with computed attribute that should be ignored
                 connection.Insert(new Car { Name = "Volvo", Computed = "this property should be ignored" });
 
-                var id = connection.Insert(new User { Name = "Adam", Age = 10 });
+                var id = connection.Insert(new User { UserName = "Adam", Age = 10 });
 
                 //get a user with "isdirty" tracking
                 var user = connection.Get<IUser>(id);
-                Assert.Equal("Adam", user.Name);
+                Assert.Equal("Adam", user.UserName);
                 Assert.False(connection.Update(user));    //returns false if not updated, based on tracking
-                user.Name = "Bob";
+                user.UserName = "Bob";
                 Assert.True(connection.Update(user));    //returns true if updated, based on tracking
                 user = connection.Get<IUser>(id);
-                Assert.Equal("Bob", user.Name);
+                Assert.Equal("Bob", user.UserName);
 
                 //get a user with no tracking
                 var notrackedUser = connection.Get<User>(id);
-                Assert.Equal("Bob", notrackedUser.Name);
+                Assert.Equal("Bob", notrackedUser.UserName);
                 Assert.True(connection.Update(notrackedUser));   //returns true, even though user was not changed
-                notrackedUser.Name = "Cecil";
+                notrackedUser.UserName = "Cecil";
                 Assert.True(connection.Update(notrackedUser));
-                Assert.Equal("Cecil", connection.Get<User>(id).Name);
+                Assert.Equal("Cecil", connection.Get<User>(id).UserName);
 
                 Assert.Single(connection.Query<User>("select * from Users"));
                 Assert.True(connection.Delete(user));
@@ -590,7 +590,7 @@ namespace Dapper.Tests.Contrib
 
             var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
-                users.Add(new User { Name = "User " + i, Age = i });
+                users.Add(new User { UserName = "User " + i, Age = i });
 
             using (var connection = GetOpenConnection())
             {
@@ -672,7 +672,7 @@ namespace Dapper.Tests.Contrib
             using (var connection = GetOpenConnection())
             {
                 Assert.Null(connection.Get<IUser>(3));
-                User user = new User { Name = "Adamb", Age = 10 };
+                User user = new User { UserName = "Adamb", Age = 10 };
                 int id = (int)connection.Insert(user);
                 Assert.Equal(user.Id, id);
             }
@@ -687,14 +687,15 @@ namespace Dapper.Tests.Contrib
                 var data = new List<User>(100);
                 for (int i = 0; i < 100; i++)
                 {
-                    var nU = new User { Age = rand.Next(70), Id = i, Name = Guid.NewGuid().ToString() };
+                    var nU = new User { Age = rand.Next(70), Id = i, UserName = Guid.NewGuid().ToString() };
                     data.Add(nU);
                     nU.Id = (int)connection.Insert(nU);
                 }
 
                 var builder = new SqlBuilder();
                 var justId = builder.AddTemplate("SELECT /**select**/ FROM Users");
-                var all = builder.AddTemplate("SELECT Name, /**select**/, Age FROM Users");
+                var isUnderscored = DefaultTypeMap.MatchNamesWithUnderscores;
+                var all = builder.AddTemplate($"SELECT User{(isUnderscored ? "_" : "")}Name, /**select**/, Age FROM Users");
 
                 builder.Select("Id");
 
@@ -704,7 +705,7 @@ namespace Dapper.Tests.Contrib
                 foreach (var u in data)
                 {
                     if (!ids.Any(i => u.Id == i)) throw new Exception("Missing ids in select");
-                    if (!users.Any(a => a.Id == u.Id && a.Name == u.Name && a.Age == u.Age)) throw new Exception("Missing users in select");
+                    if (!users.Any(a => a.Id == u.Id && a.UserName == u.UserName && a.Age == u.Age)) throw new Exception("Missing users in select");
                 }
             }
         }
@@ -721,7 +722,7 @@ namespace Dapper.Tests.Contrib
             using (var connection = GetOpenConnection())
             {
                 connection.DeleteAll<User>();
-                connection.Insert(new User { Age = 5, Name = "Testy McTestington" });
+                connection.Insert(new User { Age = 5, UserName = "Testy McTestington" });
 
                 if (connection.Query<int>(template.RawSql, template.Parameters).Single() != 1)
                     throw new Exception("Query failed");
@@ -746,8 +747,8 @@ namespace Dapper.Tests.Contrib
         {
             using (var connection = GetOpenConnection())
             {
-                var id1 = connection.Insert(new User { Name = "Alice", Age = 32 });
-                var id2 = connection.Insert(new User { Name = "Bob", Age = 33 });
+                var id1 = connection.Insert(new User { UserName = "Alice", Age = 32 });
+                var id2 = connection.Insert(new User { UserName = "Bob", Age = 33 });
                 Assert.True(connection.DeleteAll<User>());
                 Assert.Null(connection.Get<User>(id1));
                 Assert.Null(connection.Get<User>(id2));

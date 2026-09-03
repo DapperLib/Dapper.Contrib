@@ -167,6 +167,16 @@ Dapper.Contrib makes use of some optional attributes:
 * `[Write(true/false)]` -  this property is (not) writeable
 * `[Computed]` - this property is computed and should not be part of updates
 
+Support for Snake Casing
+-------
+When Dapper's `DefaultTypeMap.MatchNamesWithUnderscores` is set to true,
+Dapper will match a property named 'EmployeeId' to a 
+column named 'employee_id'. 
+
+(If using this setting, it's generally best to avoid capitalised acronyms in property
+names. For example, a prroperty named 'EmployeeID' would be mapped to a column
+named 'employee_i_d', which is unlikely to be the desired behavior.)
+
 Limitations and caveats
 -------
 

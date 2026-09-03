@@ -25,13 +25,14 @@ namespace Dapper.Contrib.Extensions
         public static async Task<T> GetAsync<T>(this IDbConnection connection, dynamic id, IDbTransaction transaction = null, int? commandTimeout = null) where T : class
         {
             var type = typeof(T);
-            if (!GetQueries.TryGetValue(type.TypeHandle, out string sql))
+            var keyType = new GetQueryCacheKey(type.TypeHandle, DefaultTypeMap.MatchNamesWithUnderscores);
+            if (!GetQueries.TryGetValue(keyType, out string sql))
             {
                 var key = GetSingleKey<T>(nameof(GetAsync));
                 var name = GetTableName(type);
 
-                sql = $"SELECT * FROM {name} WHERE {key.Name} = @id";
-                GetQueries[type.TypeHandle] = sql;
+                sql = $"SELECT * FROM {name} WHERE {ColumnMapping.ColumnName(key.Name)} = @id";
+                GetQueries[keyType] = sql;
             }
 
             var dynParams = new DynamicParameters();
@@ -49,7 +50,7 @@ namespace Dapper.Contrib.Extensions
 
             foreach (var property in TypePropertiesCache(type))
             {
-                var val = res[property.Name];
+                var val = res[ColumnMapping.ColumnName(property.Name)];
                 if (val == null) continue;
                 if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                 {
@@ -83,13 +84,15 @@ namespace Dapper.Contrib.Extensions
             var type = typeof(T);
             var cacheType = typeof(List<T>);
 
-            if (!GetQueries.TryGetValue(cacheType.TypeHandle, out string sql))
+            var cacheKeyType = new GetQueryCacheKey(cacheType.TypeHandle, DefaultTypeMap.MatchNamesWithUnderscores);
+
+            if (!GetQueries.TryGetValue(cacheKeyType, out string sql))
             {
                 GetSingleKey<T>(nameof(GetAll));
                 var name = GetTableName(type);
 
                 sql = "SELECT * FROM " + name;
-                GetQueries[cacheType.TypeHandle] = sql;
+                GetQueries[cacheKeyType] = sql;
             }
 
             if (!type.IsInterface)
@@ -108,7 +111,7 @@ namespace Dapper.Contrib.Extensions
                 var obj = ProxyGenerator.GetInterfaceProxy<T>();
                 foreach (var property in TypePropertiesCache(type))
                 {
-                    var val = res[property.Name];
+                    var val = res[ColumnMapping.ColumnName(property.Name)];
                     if (val == null) continue;
                     if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
